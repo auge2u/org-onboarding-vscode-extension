@@ -243,7 +243,7 @@ The extension parses results from:
 2. **Update package.json** with your publisher ID
 3. **Publish**:
    ```bash
-   npx vsce login your-publisher-id
+   npx vsce login HabitusNet
    npx vsce publish
    ```
 
@@ -313,7 +313,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 - **Internal Issues**: Contact your platform engineering team
 - **Feature Requests**: Open GitHub issue with `enhancement` label
 - **Bug Reports**: Open GitHub issue with `bug` label and reproduction steps
-- **Enterprise Sales**: Contact enterprise@yourorg.com
+- **Contact**: Contact swiss-sales@habitus.net
 
 ## Roadmap
 
@@ -340,6 +340,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Made with ❤️ by your Platform Engineering Team**
+**Made with ❤️ and partnership Habitusnet Platform Engineering Nexus Team**
 
-For questions or support, reach out to #platform-engineering or email platform-team@yourorg.com
+For questions or support, reach out to #platform-engineering-nexus or email plugin@platform-engineering.nexus

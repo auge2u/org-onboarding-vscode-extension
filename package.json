@@ -3,7 +3,7 @@
   "displayName": "Org Onboarding & Standards",
   "description": "Org-aware onboarding, config/extension drift detection, CI/CD, security, and enterprise value for VSCode.",
   "version": "1.0.0",
-  "publisher": "your-org",
+  "publisher": "Habitusnet Consulting AG",
   "engines": { "vscode": "^1.80.0" },
   "activationEvents": [
     "onStartupFinished",

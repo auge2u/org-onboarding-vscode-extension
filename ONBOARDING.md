@@ -235,7 +235,7 @@ The extension automatically:
 
 ---
 
-**Questions?** Reach out to the Platform Engineering team in #platform-engineering or email platform-team@yourorg.com
+**Questions?** Reach out to the Platform Engineering team in #platform-engineering-nexus
 
 **Feedback?** We're always improving! Share your experience and suggestions for making developer onboarding even better.
 
