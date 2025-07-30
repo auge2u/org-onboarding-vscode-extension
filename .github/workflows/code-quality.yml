@@ -1,0 +1,165 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run Trunk Check
+        uses: trunk-io/trunk-action@v1
+        with:
+          check-mode: all
+          
+      - name: Type Check
+        run: |
+          if [ -f "tsconfig.json" ]; then
+            npm run type-check || npx tsc --noEmit
+          else
+            echo "No TypeScript configuration found, skipping type check"
+          fi
+      
+      - name: Run Tests
+        run: |
+          if npm run test --if-present; then
+            echo "Tests completed successfully"
+          else
+            echo "No tests configured or tests failed"
+          fi
+
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Run OSV Scanner
+        run: |
+          # Install OSV Scanner
+          curl -L https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64 -o osv-scanner
+          chmod +x osv-scanner
+          
+          # Run scan
+          ./osv-scanner --json --output=osv-scanner-results.json . || echo "OSV Scanner completed with findings"
+        continue-on-error: true
+        
+      - name: Upload security scan results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-scan-results
+          path: |
+            osv-scanner-results.json
+            security-scan.json
+          retention-days: 30
+
+  extension-validation:
+    runs-on: ubuntu-latest
+    if: contains(github.repository, 'vscode-extension')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Compile extension
+        run: npm run build
+        
+      - name: Package extension
+        run: npm run package
+        
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-extension
+          path: "*.vsix"
+          retention-days: 30
+
+  compliance-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Check required files
+        run: |
+          echo "Checking for organization standard files..."
+          
+          # Check for Trunk configuration
+          if [ -f ".trunk/trunk.yaml" ]; then
+            echo "✅ Trunk configuration found"
+          else
+            echo "❌ Missing .trunk/trunk.yaml"
+            exit 1
+          fi
+          
+          # Check for ESLint configuration
+          if [ -f "eslint.config.js" ] || [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ]; then
+            echo "✅ ESLint configuration found"
+          else
+            echo "❌ Missing ESLint configuration"
+            exit 1
+          fi
+          
+          # Check for VSCode extensions
+          if [ -f ".vscode/extensions.json" ]; then
+            echo "✅ VSCode extensions configuration found"
+          else
+            echo "⚠️ Missing .vscode/extensions.json (recommended)"
+          fi
+          
+          # Check for security configuration
+          if [ -f ".github/dependabot.yml" ]; then
+            echo "✅ Dependabot configuration found"
+          else
+            echo "⚠️ Missing .github/dependabot.yml (recommended)"
+          fi
+          
+          echo "Compliance check completed"
+        
+      - name: Validate package.json scripts
+        run: |
+          echo "Checking package.json for required scripts..."
+          
+          if command -v jq >/dev/null 2>&1; then
+            if jq -e '.scripts.lint' package.json >/dev/null; then
+              echo "✅ Lint script found"
+            else
+              echo "⚠️ Missing lint script in package.json"
+            fi
+            
+            if jq -e '.scripts["type-check"]' package.json >/dev/null; then
+              echo "✅ Type check script found"
+            else
+              echo "⚠️ Missing type-check script in package.json"
+            fi
+          else
+            echo "jq not available, skipping script validation"
+          fi

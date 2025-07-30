@@ -1,0 +1,48 @@
+{
+  "name": "org-onboarding",
+  "displayName": "Org Onboarding & Standards",
+  "description": "Org-aware onboarding, config/extension drift detection, CI/CD, security, and enterprise value for VSCode.",
+  "version": "1.0.0",
+  "publisher": "your-org",
+  "engines": { "vscode": "^1.80.0" },
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:orgOnboarding.optIn",
+    "onCommand:orgOnboarding.validateTrust",
+    "onCommand:orgOnboarding.checkDrift",
+    "onCommand:orgOnboarding.syncExtensions",
+    "onCommand:orgOnboarding.enterpriseSuggest"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "orgOnboarding.optIn", "title": "Opt-in to Org Standards" },
+      { "command": "orgOnboarding.validateTrust", "title": "Show Org Trust Signals" },
+      { "command": "orgOnboarding.checkDrift", "title": "Detect and Fix Config Drift" },
+      { "command": "orgOnboarding.syncExtensions", "title": "Sync VSCode Extensions" },
+      { "command": "orgOnboarding.enterpriseSuggest", "title": "Enterprise Value Suggest" }
+    ]
+  },
+  "scripts": {
+    "build": "tsc",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.3",
+    "vsce": "^3.0.0"
+  },
+  "dependencies": {
+    "node-fetch": "^3.4.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "package": "vsce package",
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "lint": "trunk check",
+    "lint:fix": "trunk check --fix",
+    "type-check": "tsc --noEmit"
+  }
+}
