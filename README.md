@@ -5,24 +5,28 @@ A comprehensive VSCode extension for organization-aware onboarding, configuratio
 ## Features
 
 ### 🏢 Organization-Aware Onboarding
+
 - **Auto-detect organization context** from Git remotes
 - **Smart setup suggestions** for missing standards and configurations
 - **One-click setup** for Trunk, ESLint, extensions, and CI/CD
 - **Guided onboarding flow** with progressive enhancement
 
 ### 🔒 Trust Signals & Validation
+
 - **Real-time compliance monitoring** with visual status indicators
 - **GitHub Actions integration** for CI/CD status tracking
 - **Security scan integration** (OSV Scanner, Trunk security checks)
 - **Extension health monitoring** and auto-sync capabilities
 
 ### 📊 Configuration Drift Detection
+
 - **Intelligent drift detection** comparing local vs organization standards
 - **Auto-fix capabilities** for common configuration issues
 - **Selective remediation** - choose what to fix and when
 - **Proactive alerts** before issues become problems
 
 ### 🚀 Enterprise Value Features
+
 - **Centralized audit logging** for compliance and reporting
 - **Developer productivity metrics** and insights
 - **Policy as code enforcement** with automated governance
@@ -33,6 +37,7 @@ A comprehensive VSCode extension for organization-aware onboarding, configuratio
 ### Installation
 
 1. **From VSIX** (recommended for testing):
+
    ```bash
    code --install-extension org-onboarding-1.0.0.vsix
    ```
@@ -174,7 +179,7 @@ Place organization standard configs in:
 ### Available Features
 
 - **Centralized Audit Logs** - Track all activities for compliance
-- **Standards Enforcement** - Automatically enforce org policies  
+- **Standards Enforcement** - Automatically enforce org policies
 - **Drift Monitoring** - Proactive alerts for configuration drift
 - **Security Dashboard** - Unified vulnerability management
 - **Developer Metrics** - Productivity and quality insights
@@ -203,6 +208,7 @@ Set your GitHub token in settings:
 ```
 
 Required permissions:
+
 - `repo:status` - Read repository status
 - `actions:read` - Read workflow runs
 
@@ -219,6 +225,7 @@ The extension parses results from:
 ### Internal Distribution
 
 1. **Build and package**:
+
    ```bash
    npm run build
    npm run package
@@ -245,21 +252,25 @@ The extension parses results from:
 ### Common Issues
 
 **Extension not activating:**
+
 - Check VSCode version compatibility (requires 1.80+)
 - Verify workspace folder is open
 - Check Output panel for error messages
 
 **TypeScript compilation errors:**
+
 - Run `npm install` to get all dependencies
 - Ensure TypeScript 5.3+ is installed
 - Check `tsconfig.json` configuration
 
 **GitHub API errors:**
+
 - Verify token has correct permissions
 - Check token hasn't expired
 - Ensure repository URL is accessible
 
 **Configuration drift false positives:**
+
 - Update org standards in `configs/` directory
 - Clear extension cache via Command Palette
 - Check file paths and naming conventions
@@ -307,18 +318,21 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## Roadmap
 
 ### v1.1 (Next)
+
 - [ ] Advanced security scan integration
 - [ ] Custom policy rule engine
 - [ ] Team collaboration features
 - [ ] Performance optimizations
 
 ### v1.2 (Future)
+
 - [ ] Multi-language support
 - [ ] Advanced analytics dashboard
 - [ ] Automated dependency updates
 - [ ] Integration with more CI/CD platforms
 
 ### Enterprise (Ongoing)
+
 - [ ] SSO/SAML integration
 - [ ] Advanced reporting and compliance
 - [ ] Custom branding and theming
