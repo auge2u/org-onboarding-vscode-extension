@@ -131,3 +131,5 @@ webpack-stats.json
 .next/
 .nuxt/
 .svelte-kit/
+.DS_Store
+.DS_Store

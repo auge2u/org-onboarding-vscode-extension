@@ -128,6 +128,14 @@ export async function autoSyncExtensions(recommended?: ExtensionRecommendation[]
   return missing.map(ext => ext.id);
 }
 
+export function checkMissingExtensionsSilent(recommended?: ExtensionRecommendation[]): string[] {
+  const extensionsToCheck = recommended || DEFAULT_ORG_EXTENSIONS;
+  const installed = vscode.extensions.all.map((ext: vscode.Extension<any>) => ext.id);
+  const missing = extensionsToCheck.filter(rec => !installed.includes(rec.id));
+  
+  return missing.map(ext => ext.id);
+}
+
 async function installExtensions(extensions: ExtensionRecommendation[]): Promise<void> {
   for (const ext of extensions) {
     try {

@@ -2,6 +2,9 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
 
+// Global flag to prevent concurrent setup operations
+let isSetupInProgress = false;
+
 export interface OrgStandardsCheck {
   trunkExists: boolean;
   eslintExists: boolean;
@@ -99,6 +102,13 @@ function getMissingStandards(standards: OrgStandardsCheck): string[] {
 }
 
 async function setupAllStandards(rootPath: string, missing: string[]): Promise<void> {
+  // Prevent concurrent setup operations to avoid loops
+  if (isSetupInProgress) {
+    vscode.window.showWarningMessage("⚠️ Setup operation already in progress. Please wait for it to complete.");
+    return;
+  }
+  
+  isSetupInProgress = true;
   let setupCount = 0;
   
   try {
@@ -135,6 +145,8 @@ async function setupAllStandards(rootPath: string, missing: string[]): Promise<v
     
   } catch (error) {
     vscode.window.showErrorMessage(`Failed to setup standards: ${error}`);
+  } finally {
+    isSetupInProgress = false;
   }
 }
 

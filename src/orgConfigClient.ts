@@ -3,9 +3,13 @@ import * as fs from "fs";
 import * as path from "path";
 import { getLatestWorkflowStatus, getRepoInfo, getStatusIcon } from "./githubActionsApi";
 import { parseOsvScanner, parseTrunk, formatSecuritySummary } from "./securityScanParser";
-import { autoSyncExtensions, checkExtensionHealth, DEFAULT_ORG_EXTENSIONS } from "./autoSyncExtensions";
+import { autoSyncExtensions, checkExtensionHealth, checkMissingExtensionsSilent, DEFAULT_ORG_EXTENSIONS } from "./autoSyncExtensions";
 import { suggestOrgSetup } from "./autoSuggestOrgSetup";
 import { suggestEnterpriseFeatures, getEnterpriseStatus } from "./enterpriseValueSuggest";
+
+// Global flags to prevent concurrent operations
+let isDriftCheckInProgress = false;
+let isTrustValidationInProgress = false;
 
 export interface TrustSignals {
   eslintConfigured: boolean;
@@ -111,15 +115,35 @@ async function performOptIn(): Promise<void> {
     }
   });
 
-  // Auto-suggest organization setup
+  // Auto-suggest organization setup (only if not already prompted recently)
   if (orgInfo.org && orgInfo.repo) {
-    setTimeout(() => suggestOrgSetup(orgInfo.repo!, orgInfo.org!), 2000);
+    const lastPrompted = config.get<string>('lastPrompted');
+    const lastPromptedTime = lastPrompted ? new Date(lastPrompted).getTime() : 0;
+    const now = new Date().getTime();
+    const fiveMinutesAgo = now - (5 * 60 * 1000);
+    
+    // Only auto-suggest if we haven't prompted in the last 5 minutes
+    if (lastPromptedTime < fiveMinutesAgo) {
+      setTimeout(() => {
+        suggestOrgSetup(orgInfo.repo!, orgInfo.org!);
+        // Update last prompted time to prevent rapid re-prompting
+        config.update('lastPrompted', new Date().toISOString(), vscode.ConfigurationTarget.Workspace);
+      }, 2000);
+    }
   }
 }
 
 // Trust validation function
 export async function validateTrust(): Promise<void> {
-  const signals = await gatherTrustSignals();
+  // Prevent concurrent trust validations
+  if (isTrustValidationInProgress) {
+    return;
+  }
+  
+  isTrustValidationInProgress = true;
+  
+  try {
+    const signals = await gatherTrustSignals();
   const trustLevel = calculateTrustLevel(signals);
   const message = formatTrustMessage(signals, trustLevel);
 
@@ -144,11 +168,23 @@ export async function validateTrust(): Promise<void> {
           break;
       }
     });
+  } finally {
+    isTrustValidationInProgress = false;
+  }
 }
 
 // Drift detection function
 export async function checkDrift(): Promise<void> {
-  const drift = await detectConfigDrift();
+  // Prevent concurrent drift checks to avoid loops
+  if (isDriftCheckInProgress) {
+    vscode.window.showInformationMessage("⚠️ Drift check already in progress. Please wait for it to complete.");
+    return;
+  }
+  
+  isDriftCheckInProgress = true;
+  
+  try {
+    const drift = await detectConfigDrift();
   
   if (!drift.hasAnyDrift) {
     vscode.window.showInformationMessage("✅ No configuration drift detected! Everything is aligned with organization standards.");
@@ -184,6 +220,9 @@ export async function checkDrift(): Promise<void> {
     default:
       // Skip
       break;
+  }
+  } finally {
+    isDriftCheckInProgress = false;
   }
 }
 
@@ -363,8 +402,8 @@ async function detectConfigDrift(): Promise<DriftDetection> {
     configDrift.push('Missing eslint.config.js configuration');
   }
 
-  // Check extension drift
-  const missing = await autoSyncExtensions();
+  // Check extension drift silently (no UI prompts)
+  const missing = checkMissingExtensionsSilent();
   extensionDrift.push(...missing.map(id => `Missing extension: ${id}`));
 
   const hasAnyDrift = configDrift.length > 0 || extensionDrift.length > 0 || lintingDrift.length > 0;

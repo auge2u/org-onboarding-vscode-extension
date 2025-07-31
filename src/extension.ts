@@ -1,6 +1,9 @@
 import * as vscode from "vscode";
 import { optIn, validateTrust, checkDrift, syncExtensions, enterpriseSuggest } from "./orgConfigClient";
 
+// Global flags to prevent concurrent operations
+let isStatusUpdateInProgress = false;
+
 export function activate(context: vscode.ExtensionContext) {
   console.log('Org Onboarding extension is now active!');
 
@@ -73,40 +76,51 @@ async function showInitialOnboardingPrompt(): Promise<void> {
 }
 
 async function updateStatusBar(statusBarItem: vscode.StatusBarItem): Promise<void> {
-  const config = vscode.workspace.getConfiguration('orgOnboarding');
-  const isOptedIn = config.get<boolean>('optedIn', false);
-
-  if (!isOptedIn) {
-    statusBarItem.text = '$(alert) Org Standards';
-    statusBarItem.tooltip = 'Click to opt in to organization standards';
-    statusBarItem.command = 'orgOnboarding.optIn';
-    statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+  // Prevent overlapping status updates to avoid loops
+  if (isStatusUpdateInProgress) {
     return;
   }
-
-  // Quick compliance check
+  
+  isStatusUpdateInProgress = true;
+  
   try {
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) return;
+    const config = vscode.workspace.getConfiguration('orgOnboarding');
+    const isOptedIn = config.get<boolean>('optedIn', false);
 
-    // Simple check for key files
-    const hasConfig = await vscode.workspace.findFiles('.trunk/trunk.yaml', null, 1);
-    const hasEslint = await vscode.workspace.findFiles('eslint.config.js', null, 1);
-    
-    if (hasConfig.length > 0 && hasEslint.length > 0) {
-      statusBarItem.text = '$(shield-check) Org Standards';
-      statusBarItem.tooltip = 'Organization standards: Compliant';
-      statusBarItem.backgroundColor = undefined;
-    } else {
-      statusBarItem.text = '$(shield-x) Org Standards';
-      statusBarItem.tooltip = 'Organization standards: Issues detected';
+    if (!isOptedIn) {
+      statusBarItem.text = '$(alert) Org Standards';
+      statusBarItem.tooltip = 'Click to opt in to organization standards';
+      statusBarItem.command = 'orgOnboarding.optIn';
       statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+      return;
     }
-  } catch (error) {
-    statusBarItem.text = '$(shield) Org Standards';
-    statusBarItem.tooltip = 'Organization standards: Status unknown';
-    statusBarItem.backgroundColor = undefined;
-  }
 
-  statusBarItem.command = 'orgOnboarding.validateTrust';
+    // Quick compliance check
+    try {
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      if (!workspaceFolder) return;
+
+      // Simple check for key files
+      const hasConfig = await vscode.workspace.findFiles('.trunk/trunk.yaml', null, 1);
+      const hasEslint = await vscode.workspace.findFiles('eslint.config.js', null, 1);
+      
+      if (hasConfig.length > 0 && hasEslint.length > 0) {
+        statusBarItem.text = '$(shield-check) Org Standards';
+        statusBarItem.tooltip = 'Organization standards: Compliant';
+        statusBarItem.backgroundColor = undefined;
+      } else {
+        statusBarItem.text = '$(shield-x) Org Standards';
+        statusBarItem.tooltip = 'Organization standards: Issues detected';
+        statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+      }
+    } catch (error) {
+      statusBarItem.text = '$(shield) Org Standards';
+      statusBarItem.tooltip = 'Organization standards: Status unknown';
+      statusBarItem.backgroundColor = undefined;
+    }
+
+    statusBarItem.command = 'orgOnboarding.validateTrust';
+  } finally {
+    isStatusUpdateInProgress = false;
+  }
 }
