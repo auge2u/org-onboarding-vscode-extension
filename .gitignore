@@ -83,3 +83,6 @@ config/production.json
 
 # Local development
 .local/
+
+# MCP configuration (contains local server configs)
+.roo/mcp.json
