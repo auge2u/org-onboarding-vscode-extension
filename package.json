@@ -32,7 +32,38 @@
       { "command": "orgOnboarding.checkDrift", "title": "Detect and Fix Config Drift" },
       { "command": "orgOnboarding.syncExtensions", "title": "Sync VSCode Extensions" },
       { "command": "orgOnboarding.enterpriseSuggest", "title": "Enterprise Value Suggest" }
-    ]
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Org Onboarding & Standards",
+      "properties": {
+        "orgOnboarding.optedIn": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the user has opted in to organization standards"
+        },
+        "orgOnboarding.optInDate": {
+          "type": "string",
+          "description": "ISO date when the user opted in to organization standards"
+        },
+        "orgOnboarding.organization": {
+          "type": "string",
+          "description": "Name of the organization (auto-detected from git remote)"
+        },
+        "orgOnboarding.repository": {
+          "type": "string",
+          "description": "Name of the current repository (auto-detected from git remote)"
+        },
+        "orgOnboarding.lastPrompted": {
+          "type": "string",
+          "description": "ISO date when the user was last prompted for onboarding"
+        },
+        "orgOnboarding.github.token": {
+          "type": "string",
+          "description": "GitHub personal access token for API access (optional, for CI/CD integration)"
+        }
+      }
+    }
   },
   "devDependencies": {
     "@types/vscode": "^1.80.0",
