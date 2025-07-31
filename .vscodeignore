@@ -1,0 +1,75 @@
+# Source files
+src/**
+tsconfig.json
+*.ts
+
+# Build tools and configuration
+.vscode/
+.trunk/
+.roo/
+configs/
+eslint.config.js
+org-onboarding-vscode-extension.code-workspace
+orgConfigServer.js
+
+# Dependencies and caches
+node_modules/
+.npm
+.yarn
+.pnpm
+*.tsbuildinfo
+.tsbuildinfo
+
+# Development files
+*.vsix
+vsc-extension-quickstart.md
+.vscode-test/
+.vscode-test-web/
+
+# Git and version control
+.git/
+.gitignore
+
+# Documentation for development
+CONTRIBUTING.md
+.github/
+
+# Test files
+test/
+tests/
+**/*.test.ts
+**/*.test.js
+**/*.spec.ts
+**/*.spec.js
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Temporary files
+*.tmp
+*.temp
+.temp/
+.tmp/
+
+# Environment files
+.env
+.env.*
+
+# IDE files
+.idea/
+*.swp
+*.swo
+*~
+
+# Build artifacts that aren't needed
+*.d.ts.map
+*.js.map
