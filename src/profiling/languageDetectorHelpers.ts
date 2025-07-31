@@ -35,7 +35,9 @@ export function getFileContent(
     if (contentCache.size >= maxContentCacheSize) {
       // Remove oldest entry
       const oldestKey = contentCache.keys().next().value;
-      contentCache.delete(oldestKey);
+      if (oldestKey) {
+        contentCache.delete(oldestKey);
+      }
     }
     contentCache.set(filePath, content);
     
@@ -70,7 +72,9 @@ export function cacheResult(
   if (fileCache.size >= maxCacheSize) {
     // Remove oldest entry
     const oldestKey = fileCache.keys().next().value;
-    fileCache.delete(oldestKey);
+    if (oldestKey) {
+      fileCache.delete(oldestKey);
+    }
   }
   fileCache.set(filePath, result);
 }

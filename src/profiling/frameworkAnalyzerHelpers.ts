@@ -23,7 +23,7 @@ export async function analyzePackageFile(
   try {
     // Filter framework patterns by supported languages
     const relevantPatterns = frameworkPatterns.filter(pattern => 
-      pattern.languages.some(lang => languages.includes(lang))
+      pattern.languages.some((lang: string) => languages.includes(lang))
     );
     
     if (relevantPatterns.length === 0) {
@@ -111,7 +111,7 @@ export async function analyzePackageFile(
           results.push({
             name: pattern.name,
             confidence,
-            usage: 'unknown', // Will be determined later
+            usage: 'minimal', // Will be determined later
             dependencies: [],
             files: [filePath]
           });
@@ -140,7 +140,7 @@ export async function analyzeCodePatterns(
   
   // Filter framework patterns by supported languages
   const relevantPatterns = frameworkPatterns.filter(pattern => 
-    pattern.languages.some(lang => languages.includes(lang))
+    pattern.languages.some((lang: string) => languages.includes(lang))
   );
   
   if (relevantPatterns.length === 0) {
@@ -205,7 +205,7 @@ export async function analyzeCodePatterns(
                 frameworkMatches.set(pattern.name, {
                   name: pattern.name,
                   confidence,
-                  usage: 'unknown', // Will be determined later
+                  usage: 'minimal', // Will be determined later
                   dependencies: [],
                   files: [filePath]
                 });

@@ -444,7 +444,7 @@ export class WorkflowGenerator {
   }
 
   private generatePermissions(type: WorkflowTemplate['type'], customizations?: WorkflowCustomizations): any {
-    const basePermissions = {
+    const basePermissions: Record<string, string> = {
       contents: 'read',
       issues: 'write',
       'pull-requests': 'write'

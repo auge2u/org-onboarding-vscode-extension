@@ -78,7 +78,9 @@ export class AdvancedMLPredictor implements MLPredictor {
       if (cacheResults) {
         if (this.resultCache.size >= this.maxCacheSize) {
           const oldestKey = this.resultCache.keys().next().value;
-          this.resultCache.delete(oldestKey);
+          if (oldestKey) {
+            this.resultCache.delete(oldestKey);
+          }
         }
         this.resultCache.set(repositoryPath, result);
       }

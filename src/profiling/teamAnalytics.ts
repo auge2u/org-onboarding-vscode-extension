@@ -75,7 +75,9 @@ export class AdvancedTeamAnalytics implements TeamAnalytics {
       if (cacheResults) {
         if (this.resultCache.size >= this.maxCacheSize) {
           const oldestKey = this.resultCache.keys().next().value;
-          this.resultCache.delete(oldestKey);
+          if (oldestKey) {
+            this.resultCache.delete(oldestKey);
+          }
         }
         this.resultCache.set(repositoryPath, teamPreferences);
       }
@@ -248,7 +250,9 @@ export class AdvancedTeamAnalytics implements TeamAnalytics {
       // Cache result
       if (this.gitHistoryCache.size >= this.maxCacheSize) {
         const oldestKey = this.gitHistoryCache.keys().next().value;
-        this.gitHistoryCache.delete(oldestKey);
+        if (oldestKey) {
+          this.gitHistoryCache.delete(oldestKey);
+        }
       }
       this.gitHistoryCache.set(repositoryPath, result);
       
@@ -862,4 +866,14 @@ export class AdvancedTeamAnalytics implements TeamAnalytics {
   /**
    * Get time of day preferences for an author
    */
-  private getTimeOfDayPreferences(author: AuthorActivity
+  private getTimeOfDayPreferences(author: AuthorActivity): string {
+    const timeOfDay = author.commitPattern.timeOfDay;
+    const sorted = Object.entries(timeOfDay).sort((a, b) => b[1] - a[1]);
+    return sorted[0][0];
+  }
+
+  private detectCommitMessageStyle(author: AuthorActivity): string {
+    // TODO: Implement commit message style detection
+    return 'unknown';
+  }
+}

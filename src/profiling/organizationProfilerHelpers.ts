@@ -66,16 +66,16 @@ export function compareRepositories(repoA: any, repoB: any): number {
   
   // Compare languages
   const languageSimilarity = calculateJaccardSimilarity(
-    new Set(repoA.languages.map(lang => lang.language)),
-    new Set(repoB.languages.map(lang => lang.language))
+    new Set(repoA.languages.map((lang: any) => lang.language)),
+    new Set(repoB.languages.map((lang: any) => lang.language))
   );
   similarityScore += languageSimilarity;
   totalFactors++;
   
   // Compare frameworks
   const frameworkSimilarity = calculateJaccardSimilarity(
-    new Set(repoA.frameworks.map(fw => fw.name)),
-    new Set(repoB.frameworks.map(fw => fw.name))
+    new Set(repoA.frameworks.map((fw: any) => fw.name)),
+    new Set(repoB.frameworks.map((fw: any) => fw.name))
   );
   similarityScore += frameworkSimilarity;
   totalFactors++;
@@ -353,7 +353,7 @@ export function calculateOrganizationMaturityScore(
   
   // Best practice adoption contributes up to 40 points
   const avgBestPracticeAdoption = Object.values(crossRepoPatterns.bestPracticeAdoption)
-    .reduce((sum, value) => sum + (value as number), 0) / 
+    .reduce((sum: number, value) => sum + (value as number), 0) /
     Math.max(1, Object.values(crossRepoPatterns.bestPracticeAdoption).length);
   
   score += (avgBestPracticeAdoption / 100) * 40;

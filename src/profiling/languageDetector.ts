@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { LanguageDetector, LanguageDetectionResult, ProfilingOptions, ProfilingPerformanceMetrics } from './types';
+import { walkDirectory, countFileLines, cacheResult } from './languageDetectorHelpers';
 
 // Language detection patterns for content-based analysis
 interface LanguagePattern {
@@ -91,9 +92,9 @@ export class AdvancedLanguageDetector implements LanguageDetector {
       const timeoutTime = Date.now() + timeoutMs;
 
       // Walk the repository
-      await this.walkDirectory(
+      await walkDirectory(
         repositoryPath,
-        async (filePath) => {
+        async (filePath: string) => {
           // Check timeout
           if (Date.now() > timeoutTime) {
             console.warn('Language detection timeout reached');
@@ -118,8 +119,8 @@ export class AdvancedLanguageDetector implements LanguageDetector {
               
               languageFiles.get(result.language)!.push(filePath);
               languageLines.set(
-                result.language, 
-                (languageLines.get(result.language) || 0) + this.countFileLines(filePath)
+                result.language,
+                (languageLines.get(result.language) || 0) + countFileLines(filePath)
               );
               languageConfidence.get(result.language)!.push(result.confidence);
               
@@ -209,7 +210,7 @@ export class AdvancedLanguageDetector implements LanguageDetector {
             lines: 0,
             percentage: 0
           };
-          this.cacheResult(filePath, result);
+          cacheResult(filePath, result, this.fileCache, this.maxCacheSize);
           return result;
         }
         return null;
@@ -229,7 +230,7 @@ export class AdvancedLanguageDetector implements LanguageDetector {
             lines: content.split('\n').length,
             percentage: 0
           };
-          this.cacheResult(filePath, result);
+          cacheResult(filePath, result, this.fileCache, this.maxCacheSize);
           return result;
         }
         
@@ -243,7 +244,7 @@ export class AdvancedLanguageDetector implements LanguageDetector {
             lines: content.split('\n').length,
             percentage: 0
           };
-          this.cacheResult(filePath, result);
+          cacheResult(filePath, result, this.fileCache, this.maxCacheSize);
           return result;
         }
         
@@ -256,7 +257,7 @@ export class AdvancedLanguageDetector implements LanguageDetector {
             lines: content.split('\n').length,
             percentage: 0
           };
-          this.cacheResult(filePath, result);
+          cacheResult(filePath, result, this.fileCache, this.maxCacheSize);
           return result;
         }
         
@@ -268,7 +269,7 @@ export class AdvancedLanguageDetector implements LanguageDetector {
           lines: content.split('\n').length,
           percentage: 0
         };
-        this.cacheResult(filePath, result);
+        cacheResult(filePath, result, this.fileCache, this.maxCacheSize);
         return result;
       }
       
@@ -281,7 +282,7 @@ export class AdvancedLanguageDetector implements LanguageDetector {
           lines: content.split('\n').length,
           percentage: 0
         };
-        this.cacheResult(filePath, result);
+        cacheResult(filePath, result, this.fileCache, this.maxCacheSize);
         return result;
       }
       
@@ -906,3 +907,25 @@ export class AdvancedLanguageDetector implements LanguageDetector {
    */
   private async getFileContent(filePath: string): Promise<string | null> {
     // Check cache
+    if (this.contentCache.has(filePath)) {
+      return this.contentCache.get(filePath)!;
+    }
+    try {
+      const stats = fs.statSync(filePath);
+      if (stats.size > this.maxContentSizeBytes) {
+        return null;
+      }
+      const content = fs.readFileSync(filePath, 'utf8');
+      if (this.contentCache.size >= this.maxContentCacheSize) {
+        const oldestKey = this.contentCache.keys().next().value;
+        if (oldestKey) {
+          this.contentCache.delete(oldestKey);
+        }
+      }
+      this.contentCache.set(filePath, content);
+      return content;
+    } catch (error) {
+      return null;
+    }
+  }
+}

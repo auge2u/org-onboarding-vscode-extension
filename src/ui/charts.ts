@@ -39,13 +39,13 @@ export interface ChartData {
 
 export interface ChartDataset {
   label: string;
-  data: number[];
+  data: any[];
   backgroundColor?: string | string[];
   borderColor?: string | string[];
   borderWidth?: number;
   fill?: boolean;
   tension?: number;
-  pointRadius?: number;
+  pointRadius?: any;
   pointHoverRadius?: number;
 }
 
@@ -57,7 +57,7 @@ export interface ChartOptions {
     title: TitleOptions;
     tooltip: TooltipOptions;
   };
-  scales?: ScalesOptions;
+  scales?: any;
   animation?: AnimationOptions;
   interaction?: InteractionOptions;
 }
@@ -505,7 +505,6 @@ export class ChartGenerator {
               color: this.themeColors.text
             },
             ticks: { 
-              color: this.themeColors.text,
               callback: function(value: any, index: number) {
                 return labels[index] || '';
               }

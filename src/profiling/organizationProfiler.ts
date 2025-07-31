@@ -66,7 +66,9 @@ export class AdvancedOrganizationProfiler implements OrganizationProfiler {
       if (cacheResults) {
         if (this.resultCache.size >= this.maxCacheSize) {
           const oldestKey = this.resultCache.keys().next().value;
-          this.resultCache.delete(oldestKey);
+          if (oldestKey) {
+            this.resultCache.delete(oldestKey);
+          }
         }
         this.resultCache.set(repositoryPath, result);
       }
@@ -474,12 +476,12 @@ export class AdvancedOrganizationProfiler implements OrganizationProfiler {
     
     // Calculate language consistency
     const languageConsistency = this.calculateTechnologyConsistency(
-      repositoryProfiles.map(profile => profile.languages.map(lang => lang.language))
+      repositoryProfiles.map(profile => profile.languages.map((lang: any) => lang.language))
     );
     
     // Calculate framework consistency
     const frameworkConsistency = this.calculateTechnologyConsistency(
-      repositoryProfiles.map(profile => profile.frameworks.map(fw => fw.name))
+      repositoryProfiles.map(profile => profile.frameworks.map((fw: any) => fw.name))
     );
     
     // Calculate team preferences consistency
@@ -651,7 +653,7 @@ export class AdvancedOrganizationProfiler implements OrganizationProfiler {
       };
       
       for (const trend of trends) {
-        trendCounts[trend.trend]++;
+        trendCounts[trend.trend as keyof typeof trendCounts]++;
       }
       
       // Return the dominant trend
@@ -887,4 +889,9 @@ export class AdvancedOrganizationProfiler implements OrganizationProfiler {
 
   /**
    * Check for semantic versioning
-   
+   */
+  private checkForSemanticVersioning(repositoryPath: string): boolean {
+    // TODO: Implement semantic versioning check
+    return false;
+  }
+}

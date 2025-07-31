@@ -8,6 +8,15 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { FrameworkAnalyzer, FrameworkDetectionResult, ArchitecturePatternResult, ProfilingOptions, ProfilingPerformanceMetrics } from './types';
 import { walkDirectory } from './languageDetectorHelpers';
+import {
+  analyzePackageFile,
+  analyzeCodePatterns,
+  analyzeFileStructure,
+  analyzeCodePatternsForArchitecture,
+  analyzeConfigPatternsForArchitecture,
+  enhanceWithArchitecturePatterns,
+  extractVersion
+} from './frameworkAnalyzerHelpers';
 
 // Framework detection pattern
 interface FrameworkPattern {
@@ -85,13 +94,15 @@ export class AdvancedFrameworkAnalyzer implements FrameworkAnalyzer {
       const architecturePatterns = await this.detectArchitecturePatterns(repositoryPath);
       
       // Enhance framework results with architecture patterns
-      const enhancedResults = this.enhanceWithArchitecturePatterns(frameworks, architecturePatterns);
+      const enhancedResults = enhanceWithArchitecturePatterns(frameworks, architecturePatterns);
       
       // Cache results
       if (cacheResults) {
         if (this.resultCache.size >= this.maxCacheSize) {
           const oldestKey = this.resultCache.keys().next().value;
-          this.resultCache.delete(oldestKey);
+          if (oldestKey) {
+            this.resultCache.delete(oldestKey);
+          }
         }
         this.resultCache.set(cacheKey, enhancedResults);
       }
@@ -114,7 +125,7 @@ export class AdvancedFrameworkAnalyzer implements FrameworkAnalyzer {
     
     // Analyze package files
     for (const filePath of packageFiles) {
-      const packageMatches = await this.analyzePackageFile(filePath, languages);
+      const packageMatches = await analyzePackageFile(filePath, languages, this.frameworkPatterns);
       
       // Merge results
       for (const match of packageMatches) {
@@ -130,7 +141,7 @@ export class AdvancedFrameworkAnalyzer implements FrameworkAnalyzer {
     }
     
     // Analyze code patterns
-    const codeMatches = await this.analyzeCodePatterns(languages, packageFiles);
+    const codeMatches = await analyzeCodePatterns(languages, packageFiles, this.frameworkPatterns, '');
     
     // Merge code pattern results
     for (const match of codeMatches) {
@@ -184,15 +195,15 @@ export class AdvancedFrameworkAnalyzer implements FrameworkAnalyzer {
           
           // Framework-specific version detection
           if (framework === 'react' && allDeps.react) {
-            return this.extractVersion(allDeps.react);
+            return extractVersion(allDeps.react);
           } else if (framework === 'angular' && allDeps['@angular/core']) {
-            return this.extractVersion(allDeps['@angular/core']);
+            return extractVersion(allDeps['@angular/core']);
           } else if (framework === 'vue' && allDeps.vue) {
-            return this.extractVersion(allDeps.vue);
+            return extractVersion(allDeps.vue);
           } else if (framework === 'next' && allDeps.next) {
-            return this.extractVersion(allDeps.next);
+            return extractVersion(allDeps.next);
           } else if (framework === 'express' && allDeps.express) {
-            return this.extractVersion(allDeps.express);
+            return extractVersion(allDeps.express);
           }
         }
         
@@ -272,7 +283,7 @@ export class AdvancedFrameworkAnalyzer implements FrameworkAnalyzer {
    */
   async detectArchitecturePatterns(repositoryPath: string): Promise<ArchitecturePatternResult[]> {
     const results: ArchitecturePatternResult[] = [];
-    const fileStructure = await this.analyzeFileStructure(repositoryPath);
+    const fileStructure = await analyzeFileStructure(repositoryPath);
     
     for (const pattern of this.architecturePatterns) {
       let matches = 0;
@@ -298,7 +309,7 @@ export class AdvancedFrameworkAnalyzer implements FrameworkAnalyzer {
       
       // Check code patterns
       if (pattern.codePatterns) {
-        const codeMatches = await this.analyzeCodePatternsForArchitecture(
+        const codeMatches = await analyzeCodePatternsForArchitecture(
           repositoryPath, pattern.codePatterns
         );
         
@@ -309,7 +320,7 @@ export class AdvancedFrameworkAnalyzer implements FrameworkAnalyzer {
       
       // Check config patterns
       if (pattern.configPatterns) {
-        const configMatches = await this.analyzeConfigPatternsForArchitecture(
+        const configMatches = await analyzeConfigPatternsForArchitecture(
           repositoryPath, pattern.configPatterns
         );
         
@@ -818,4 +829,8 @@ export class AdvancedFrameworkAnalyzer implements FrameworkAnalyzer {
    * Analyze a package file for framework detection
    */
   private async analyzePackageFile(filePath: string, languages: string[]): Promise<FrameworkDetectionResult[]> {
-    const results: FrameworkDetectionResult[]
+    const results: FrameworkDetectionResult[] = [];
+    // TODO: Implement package file analysis
+    return results;
+  }
+}

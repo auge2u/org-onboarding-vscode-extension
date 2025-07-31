@@ -10,6 +10,17 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { HistoryAnalyzer, QualityTrend, TechnicalDebtMetrics, RefactoringOpportunity, ProfilingOptions, ProfilingPerformanceMetrics } from './types';
 import { walkDirectory } from './languageDetectorHelpers';
+import {
+  calculateTrendDirection,
+  isBinaryFile,
+  isSourceFile,
+  calculateOverallDebtScore,
+  determineTechnicalDebtTrend,
+  calculateVelocityImpact,
+  estimateTestCoverage,
+  estimateLintIssues,
+  calculateTechnicalDebtScore
+} from './historyAnalyzerHelpers';
 
 const execAsync = promisify(exec);
 
@@ -79,7 +90,9 @@ export class AdvancedHistoryAnalyzer implements HistoryAnalyzer {
       if (cacheResults) {
         if (this.resultCache.size >= this.maxCacheSize) {
           const oldestKey = this.resultCache.keys().next().value;
-          this.resultCache.delete(oldestKey);
+          if (oldestKey) {
+            this.resultCache.delete(oldestKey);
+          }
         }
         this.resultCache.set(repositoryPath, qualityTrends);
       }
@@ -116,27 +129,27 @@ export class AdvancedHistoryAnalyzer implements HistoryAnalyzer {
         {
           metric: 'complexity',
           values: qualityMetrics.map(m => ({ timestamp: m.date, value: m.complexity })),
-          trend: this.calculateTrendDirection(qualityMetrics.map(m => m.complexity))
+          trend: calculateTrendDirection(qualityMetrics.map(m => m.complexity))
         },
         {
           metric: 'duplication',
           values: qualityMetrics.map(m => ({ timestamp: m.date, value: m.duplication })),
-          trend: this.calculateTrendDirection(qualityMetrics.map(m => m.duplication))
+          trend: calculateTrendDirection(qualityMetrics.map(m => m.duplication))
         },
         {
           metric: 'testCoverage',
           values: qualityMetrics.map(m => ({ timestamp: m.date, value: m.testCoverage })),
-          trend: this.calculateTrendDirection(qualityMetrics.map(m => m.testCoverage), true)
+          trend: calculateTrendDirection(qualityMetrics.map(m => m.testCoverage), true)
         },
         {
           metric: 'lintIssues',
           values: qualityMetrics.map(m => ({ timestamp: m.date, value: m.lintErrors + m.lintWarnings })),
-          trend: this.calculateTrendDirection(qualityMetrics.map(m => m.lintErrors + m.lintWarnings))
+          trend: calculateTrendDirection(qualityMetrics.map(m => m.lintErrors + m.lintWarnings))
         },
         {
           metric: 'technicalDebt',
           values: qualityMetrics.map(m => ({ timestamp: m.date, value: m.technicalDebtScore })),
-          trend: this.calculateTrendDirection(qualityMetrics.map(m => m.technicalDebtScore))
+          trend: calculateTrendDirection(qualityMetrics.map(m => m.technicalDebtScore))
         }
       ];
       
@@ -179,15 +192,10 @@ export class AdvancedHistoryAnalyzer implements HistoryAnalyzer {
       const complexFiles = await this.identifyComplexFiles(repositoryPath);
       
       // Identify refactoring opportunities
-      const refactoringOpportunities = await this.identifyRefactoringOpportunities(
-        repositoryPath,
-        highChurnFiles,
-        oldFiles,
-        complexFiles
-      );
+      const refactoringOpportunities = await this.identifyRefactoringOpportunities(repositoryPath);
       
       // Calculate overall debt score
-      const overallDebtScore = this.calculateOverallDebtScore(
+      const overallDebtScore = calculateOverallDebtScore(
         highChurnFiles.length,
         oldFiles.length,
         complexFiles.length,
@@ -203,10 +211,10 @@ export class AdvancedHistoryAnalyzer implements HistoryAnalyzer {
       };
       
       // Determine debt trend
-      const debtTrend = await this.determineTechnicalDebtTrend(repositoryPath);
+      const debtTrend = await determineTechnicalDebtTrend(repositoryPath);
       
       // Calculate velocity impact
-      const velocityImpact = this.calculateVelocityImpact(overallDebtScore);
+      const velocityImpact = calculateVelocityImpact(overallDebtScore);
       
       // Create result
       const result: TechnicalDebtMetrics = {
@@ -220,7 +228,9 @@ export class AdvancedHistoryAnalyzer implements HistoryAnalyzer {
       // Cache result
       if (this.debtCache.size >= this.maxCacheSize) {
         const oldestKey = this.debtCache.keys().next().value;
-        this.debtCache.delete(oldestKey);
+        if (oldestKey) {
+          this.debtCache.delete(oldestKey);
+        }
       }
       this.debtCache.set(repositoryPath, result);
       
@@ -239,43 +249,6 @@ export class AdvancedHistoryAnalyzer implements HistoryAnalyzer {
     }
   }
 
-  /**
-   * Identify refactoring opportunities
-   */
-  async identifyRefactoringOpportunities(repositoryPath: string): Promise<RefactoringOpportunity[]> {
-    try {
-      // Get file change history
-      const fileChanges = await this.getFileChangeHistory(repositoryPath);
-      
-      // Identify high-churn files
-      const highChurnFiles = fileChanges
-        .filter(file => file.churnRate > 2.0) // Files with high churn rate
-        .sort((a, b) => b.churnRate - a.churnRate)
-        .slice(0, 10); // Top 10 high-churn files
-      
-      // Identify old, unchanged files
-      const oldFiles = fileChanges
-        .filter(file => {
-          const daysSinceLastChange = (Date.now() - file.lastModified.getTime()) / (1000 * 60 * 60 * 24);
-          return daysSinceLastChange > 180 && file.totalChanges > 10; // Unchanged for 6+ months but has history
-        })
-        .sort((a, b) => a.lastModified.getTime() - b.lastModified.getTime())
-        .slice(0, 10); // Top 10 oldest files
-      
-      // Identify complex files
-      const complexFiles = await this.identifyComplexFiles(repositoryPath);
-      
-      return this.identifyRefactoringOpportunities(
-        repositoryPath,
-        highChurnFiles,
-        oldFiles,
-        complexFiles
-      );
-    } catch (error) {
-      console.warn('Error identifying refactoring opportunities:', error);
-      return [];
-    }
-  }
 
   /**
    * Track development velocity
@@ -386,7 +359,7 @@ export class AdvancedHistoryAnalyzer implements HistoryAnalyzer {
       for (const filePath of files) {
         try {
           // Skip binary files and non-source files
-          if (this.isBinaryFile(filePath) || !this.isSourceFile(filePath)) {
+          if (isBinaryFile(filePath) || !isSourceFile(filePath)) {
             continue;
           }
           
@@ -518,11 +491,11 @@ export class AdvancedHistoryAnalyzer implements HistoryAnalyzer {
           // Calculate metrics at this point in time
           const complexity = await this.calculateComplexity(repositoryPath);
           const duplication = await this.calculateDuplication(repositoryPath);
-          const testCoverage = await this.estimateTestCoverage(repositoryPath);
-          const { errors, warnings } = await this.estimateLintIssues(repositoryPath);
+          const testCoverage = await estimateTestCoverage(repositoryPath);
+          const { errors, warnings } = await estimateLintIssues(repositoryPath);
           
           // Calculate technical debt score
-          const technicalDebtScore = this.calculateTechnicalDebtScore(
+          const technicalDebtScore = calculateTechnicalDebtScore(
             complexity,
             duplication,
             testCoverage,
@@ -567,7 +540,7 @@ export class AdvancedHistoryAnalyzer implements HistoryAnalyzer {
       async (filePath) => {
         try {
           // Skip binary files and non-source files
-          if (this.isBinaryFile(filePath) || !this.isSourceFile(filePath)) {
+          if (isBinaryFile(filePath) || !isSourceFile(filePath)) {
             return;
           }
           
@@ -596,12 +569,15 @@ export class AdvancedHistoryAnalyzer implements HistoryAnalyzer {
   /**
    * Identify refactoring opportunities
    */
-  private async identifyRefactoringOpportunities(
-    repositoryPath: string,
-    highChurnFiles: FileChangeHistory[],
-    oldFiles: FileChangeHistory[],
-    complexFiles: { path: string; complexity: number }[]
+  async identifyRefactoringOpportunities(
+    repositoryPath: string
   ): Promise<RefactoringOpportunity[]> {
+    const highChurnFiles = (await this.getFileChangeHistory(repositoryPath)).filter(file => file.churnRate > 2.0).sort((a, b) => b.churnRate - a.churnRate).slice(0, 10);
+    const oldFiles = (await this.getFileChangeHistory(repositoryPath)).filter(file => {
+      const daysSinceLastChange = (Date.now() - file.lastModified.getTime()) / (1000 * 60 * 60 * 24);
+      return daysSinceLastChange > 180 && file.totalChanges > 10;
+    }).sort((a, b) => a.lastModified.getTime() - b.lastModified.getTime()).slice(0, 10);
+    const complexFiles = await this.identifyComplexFiles(repositoryPath);
     const opportunities: RefactoringOpportunity[] = [];
     
     // Add high-churn files as refactoring opportunities
@@ -682,7 +658,7 @@ export class AdvancedHistoryAnalyzer implements HistoryAnalyzer {
         const fileName = path.basename(relativePath);
         
         // Skip binary files and non-source files
-        if (this.isBinaryFile(fileName) || !this.isSourceFile(fileName)) {
+        if (isBinaryFile(fileName) || !isSourceFile(fileName)) {
           return;
         }
         
@@ -822,7 +798,7 @@ export class AdvancedHistoryAnalyzer implements HistoryAnalyzer {
       (filePath) => {
         try {
           // Skip binary files and non-source files
-          if (this.isBinaryFile(filePath) || !this.isSourceFile(filePath)) {
+          if (isBinaryFile(filePath) || !isSourceFile(filePath)) {
             return;
           }
           
@@ -861,3 +837,22 @@ export class AdvancedHistoryAnalyzer implements HistoryAnalyzer {
           .replace(/[^a-zA-Z0-9]/g, ''); // Remove special characters
         
         if (baseName.length < 3) {
+          return;
+        }
+        if (!filesByBaseName[baseName]) {
+          filesByBaseName[baseName] = [];
+        }
+        filesByBaseName[baseName].push(fileName);
+      }
+    );
+
+    let duplicatedFiles = 0;
+    for (const files of Object.values(filesByBaseName)) {
+      if (files.length > 1) {
+        duplicatedFiles += files.length;
+      }
+    }
+
+    return duplicatedFiles;
+  }
+}

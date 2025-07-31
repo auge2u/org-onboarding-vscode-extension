@@ -52,7 +52,7 @@ export interface TeamPreferences {
 export interface CommitPattern {
   author: string;
   frequency: number;
-  timeOfDay: string[];
+  timeOfDay: string;
   filesModified: string[];
   linesChanged: number;
   commitMessageStyle: string;
@@ -133,7 +133,7 @@ export interface FrameworkDetectionResult {
   name: string;
   version?: string;
   confidence: number;
-  usage: 'primary' | 'secondary' | 'minimal';
+  usage: 'primary' | 'secondary' | 'minimal' | 'architecture';
   dependencies: string[];
   files: string[];
 }
