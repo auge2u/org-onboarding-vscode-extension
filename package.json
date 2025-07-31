@@ -4,9 +4,20 @@
   "description": "Org-aware onboarding, config/extension drift detection, CI/CD, security, and enterprise value for VSCode.",
   "version": "1.0.0",
   "publisher": "HabitusNet",
-  "engines": { "vscode": "^1.80.0" },
-  "categories": ["Other"],
-  "keywords": ["onboarding", "organization", "standards", "configuration", "security", "enterprise"],
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "onboarding",
+    "organization",
+    "standards",
+    "configuration",
+    "security",
+    "enterprise"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/auge2u/org-onboarding-vscode-extension.git"
@@ -27,11 +38,26 @@
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
-      { "command": "orgOnboarding.optIn", "title": "Opt-in to Org Standards" },
-      { "command": "orgOnboarding.validateTrust", "title": "Show Org Trust Signals" },
-      { "command": "orgOnboarding.checkDrift", "title": "Detect and Fix Config Drift" },
-      { "command": "orgOnboarding.syncExtensions", "title": "Sync VSCode Extensions" },
-      { "command": "orgOnboarding.enterpriseSuggest", "title": "Enterprise Value Suggest" }
+      {
+        "command": "orgOnboarding.optIn",
+        "title": "Opt-in to Org Standards"
+      },
+      {
+        "command": "orgOnboarding.validateTrust",
+        "title": "Show Org Trust Signals"
+      },
+      {
+        "command": "orgOnboarding.checkDrift",
+        "title": "Detect and Fix Config Drift"
+      },
+      {
+        "command": "orgOnboarding.syncExtensions",
+        "title": "Sync VSCode Extensions"
+      },
+      {
+        "command": "orgOnboarding.enterpriseSuggest",
+        "title": "Enterprise Value Suggest"
+      }
     ],
     "configuration": {
       "type": "object",
@@ -81,6 +107,7 @@
     "watch": "tsc -watch -p .",
     "lint": "trunk check",
     "lint:fix": "trunk check --fix",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "pre-commit": "trunk check --fix"
   }
 }
