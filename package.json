@@ -23,18 +23,14 @@
       { "command": "orgOnboarding.enterpriseSuggest", "title": "Enterprise Value Suggest" }
     ]
   },
-  "scripts": {
-    "build": "tsc",
-    "package": "vsce package"
-  },
   "devDependencies": {
     "@types/vscode": "^1.80.0",
-    "@types/node": "^20.0.0",
-    "typescript": "^5.3.3",
-    "vsce": "^3.0.0"
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.4",
+    "@vscode/vsce": "^2.31.1"
   },
   "dependencies": {
-    "node-fetch": "^3.4.0"
+    "node-fetch": "^3.3.2"
   },
   "scripts": {
     "build": "tsc",
