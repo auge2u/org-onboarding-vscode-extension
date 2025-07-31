@@ -13,7 +13,11 @@ let isTrustValidationInProgress = false;
 
 export interface TrustSignals {
   eslintConfigured: boolean;
-  trunkConfigured: boolean;
+  trunkConfigured: boolean; // maintained for backward compatibility
+  megalinterConfigured?: boolean; // new MegaLinter field
+  megalinterStatus?: 'success' | 'failure' | 'pending' | 'unknown'; // new field
+  linterCoverage?: number; // percentage of recommended linters active
+  performanceScore?: number; // execution efficiency metric
   extensionsAligned: boolean;
   ciStatus: 'success' | 'failure' | 'pending' | 'unknown';
   securityScanStatus: 'clean' | 'issues' | 'unknown';
@@ -23,7 +27,10 @@ export interface TrustSignals {
 export interface DriftDetection {
   configDrift: string[];
   extensionDrift: string[];
-  lintingDrift: string[];
+  lintingDrift: string[]; // maintained for backward compatibility
+  megalinterDrift?: string[]; // new: MegaLinter-specific drift
+  configurationDrift?: string[]; // enhanced config drift detection
+  performanceDrift?: string[]; // new: performance regression detection
   hasAnyDrift: boolean;
 }
 
@@ -306,6 +313,10 @@ async function gatherTrustSignals(): Promise<TrustSignals> {
     return {
       eslintConfigured: false,
       trunkConfigured: false,
+      megalinterConfigured: false,
+      megalinterStatus: 'unknown',
+      linterCoverage: 0,
+      performanceScore: 0,
       extensionsAligned: false,
       ciStatus: 'unknown',
       securityScanStatus: 'unknown',
@@ -319,6 +330,38 @@ async function gatherTrustSignals(): Promise<TrustSignals> {
   const eslintConfigured = fs.existsSync(path.join(rootPath, 'eslint.config.js')) ||
                           fs.existsSync(path.join(rootPath, '.eslintrc.js'));
   const trunkConfigured = fs.existsSync(path.join(rootPath, '.trunk', 'trunk.yaml'));
+  const megalinterConfigured = fs.existsSync(path.join(rootPath, '.mega-linter.yml')) ||
+                               fs.existsSync(path.join(rootPath, '.megalinter.yml'));
+  
+  // Determine MegaLinter status
+  let megalinterStatus: 'success' | 'failure' | 'pending' | 'unknown' = 'unknown';
+  let linterCoverage = 0;
+  let performanceScore = 0;
+  
+  if (megalinterConfigured) {
+    try {
+      // Try to get MegaLinter orchestrator status
+      const { MegaLinterOrchestrator } = await import('./megalinter/orchestrator');
+      const orchestrator = new MegaLinterOrchestrator();
+      const status = await orchestrator.getStatus();
+      
+      megalinterStatus = status.health === 'healthy' ? 'success' :
+                        status.health === 'warning' ? 'pending' : 'failure';
+      
+      // Calculate linter coverage based on detected languages
+      const profile = await orchestrator.detectLanguages(rootPath);
+      const totalLanguages = profile.primary.length + profile.secondary.length;
+      linterCoverage = totalLanguages > 0 ? Math.min((totalLanguages * 10), 100) : 0; // Rough estimate
+      
+      // Performance score based on configuration complexity
+      performanceScore = profile.complexity === 'simple' ? 90 :
+                        profile.complexity === 'moderate' ? 75 : 60;
+      
+    } catch (error) {
+      console.warn('Error getting MegaLinter status:', error);
+      megalinterStatus = 'failure';
+    }
+  }
   
   // Check extension alignment
   const health = await checkExtensionHealth();
@@ -344,6 +387,10 @@ async function gatherTrustSignals(): Promise<TrustSignals> {
   return {
     eslintConfigured,
     trunkConfigured,
+    megalinterConfigured,
+    megalinterStatus,
+    linterCoverage,
+    performanceScore,
     extensionsAligned,
     ciStatus,
     securityScanStatus: 'unknown', // Would need actual security scan
@@ -353,32 +400,65 @@ async function gatherTrustSignals(): Promise<TrustSignals> {
 
 function calculateTrustLevel(signals: TrustSignals): number {
   let score = 0;
-  if (signals.eslintConfigured) score += 20;
-  if (signals.trunkConfigured) score += 25;
-  if (signals.extensionsAligned) score += 15;
-  if (signals.ciStatus === 'success') score += 25;
+  if (signals.eslintConfigured) score += 15;
+  
+  // Prefer MegaLinter over Trunk (higher score for MegaLinter)
+  if (signals.megalinterConfigured) {
+    score += 35; // Higher score for MegaLinter
+    if (signals.megalinterStatus === 'success') score += 10;
+    if (signals.linterCoverage && signals.linterCoverage > 70) score += 5;
+    if (signals.performanceScore && signals.performanceScore > 80) score += 5;
+  } else if (signals.trunkConfigured) {
+    score += 20; // Lower score for Trunk (legacy)
+  }
+  
+  if (signals.extensionsAligned) score += 10;
+  if (signals.ciStatus === 'success') score += 20;
   if (signals.securityScanStatus === 'clean') score += 15;
-  return score;
+  
+  return Math.min(score, 100); // Cap at 100%
 }
 
 function formatTrustMessage(signals: TrustSignals, trustLevel: number): string {
   const eslintIcon = signals.eslintConfigured ? '✅' : '❌';
-  const trunkIcon = signals.trunkConfigured ? '✅' : '❌';
   const extIcon = signals.extensionsAligned ? '✅' : '❌';
   const ciIcon = getStatusIcon(signals.ciStatus, signals.ciStatus);
   
+  // Show MegaLinter or Trunk status
+  let linterIcon = '❌';
+  let linterText = 'No Linter Configuration';
+  
+  if (signals.megalinterConfigured) {
+    linterIcon = signals.megalinterStatus === 'success' ? '✅' :
+                 signals.megalinterStatus === 'pending' ? '⏳' : '❌';
+    const coverage = signals.linterCoverage ? ` (${signals.linterCoverage}% coverage)` : '';
+    const performance = signals.performanceScore ? ` - ${signals.performanceScore}% performance` : '';
+    linterText = `MegaLinter Setup${coverage}${performance}`;
+  } else if (signals.trunkConfigured) {
+    linterIcon = '🟡'; // Yellow for legacy Trunk
+    linterText = 'Trunk Linting (Legacy - Consider MegaLinter upgrade)';
+  }
+  
   let trustEmoji = '🔴';
-  if (trustLevel >= 80) trustEmoji = '🟢';
-  else if (trustLevel >= 60) trustEmoji = '🟡';
-  else if (trustLevel >= 40) trustEmoji = '🟠';
+  if (trustLevel >= 85) trustEmoji = '🟢';
+  else if (trustLevel >= 70) trustEmoji = '🟡';
+  else if (trustLevel >= 50) trustEmoji = '🟠';
+
+  let additionalInfo = '';
+  if (signals.megalinterConfigured && signals.linterCoverage) {
+    additionalInfo = `\n🔍 Linter Coverage: ${signals.linterCoverage}%`;
+  }
+  if (signals.performanceScore) {
+    additionalInfo += `\n⚡ Performance Score: ${signals.performanceScore}%`;
+  }
 
   return `${trustEmoji} **Trust Level: ${trustLevel}%**
 
 ${eslintIcon} ESLint Configuration
-${trunkIcon} Trunk Linting Setup  
+${linterIcon} ${linterText}
 ${extIcon} VSCode Extensions Aligned
 ${ciIcon} CI/CD Pipeline Status
-🔒 Security Scan: ${signals.securityScanStatus}
+🔒 Security Scan: ${signals.securityScanStatus}${additionalInfo}
 
 Last updated: ${signals.lastUpdated.toLocaleTimeString()}`;
 }
@@ -387,28 +467,97 @@ async function detectConfigDrift(): Promise<DriftDetection> {
   const configDrift: string[] = [];
   const extensionDrift: string[] = [];
   const lintingDrift: string[] = [];
+  const megalinterDrift: string[] = [];
+  const configurationDrift: string[] = [];
+  const performanceDrift: string[] = [];
 
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
   if (!workspaceFolder) {
-    return { configDrift, extensionDrift, lintingDrift, hasAnyDrift: false };
+    return {
+      configDrift,
+      extensionDrift,
+      lintingDrift,
+      megalinterDrift,
+      configurationDrift,
+      performanceDrift,
+      hasAnyDrift: false
+    };
   }
 
-  // Check for missing standard configs
   const rootPath = workspaceFolder.uri.fsPath;
-  if (!fs.existsSync(path.join(rootPath, '.trunk', 'trunk.yaml'))) {
-    configDrift.push('Missing .trunk/trunk.yaml configuration');
+  
+  // Check for MegaLinter vs Trunk configuration
+  const hasMegaLinter = fs.existsSync(path.join(rootPath, '.mega-linter.yml')) ||
+                        fs.existsSync(path.join(rootPath, '.megalinter.yml'));
+  const hasTrunk = fs.existsSync(path.join(rootPath, '.trunk', 'trunk.yaml'));
+  
+  if (!hasMegaLinter && !hasTrunk) {
+    configDrift.push('Missing linter configuration (recommend MegaLinter setup)');
+    megalinterDrift.push('No MegaLinter configuration found');
+  } else if (hasTrunk && !hasMegaLinter) {
+    megalinterDrift.push('Trunk detected - consider upgrading to MegaLinter for enhanced capabilities');
+    configurationDrift.push('Legacy Trunk configuration can be upgraded to MegaLinter');
   }
-  if (!fs.existsSync(path.join(rootPath, 'eslint.config.js'))) {
-    configDrift.push('Missing eslint.config.js configuration');
+  
+  // Check MegaLinter-specific drift
+  if (hasMegaLinter) {
+    try {
+      const { MegaLinterOrchestrator } = await import('./megalinter/orchestrator');
+      const orchestrator = new MegaLinterOrchestrator();
+      
+      // Check if MegaLinter configuration is outdated
+      const profile = await orchestrator.detectLanguages(rootPath);
+      const config = await orchestrator.generateConfiguration(profile, []);
+      const validation = await orchestrator.validateConfiguration(config);
+      
+      if (!validation.valid) {
+        megalinterDrift.push(...validation.errors.map(e => `MegaLinter config error: ${e.message}`));
+      }
+      
+      if (validation.warnings.length > 0) {
+        megalinterDrift.push(...validation.warnings.map(w => `MegaLinter warning: ${w.message}`));
+      }
+      
+      // Check for performance drift
+      if (profile.complexity === 'complex' && config.performance.parallelism < 4) {
+        performanceDrift.push('MegaLinter parallelism could be increased for better performance');
+      }
+      
+      if (config.performance.cacheStrategy === 'disabled') {
+        performanceDrift.push('MegaLinter caching is disabled - enable for better performance');
+      }
+      
+    } catch (error) {
+      megalinterDrift.push('Error validating MegaLinter configuration');
+    }
+  }
+  
+  // Legacy linting drift check
+  if (!fs.existsSync(path.join(rootPath, 'eslint.config.js')) &&
+      !fs.existsSync(path.join(rootPath, '.eslintrc.js'))) {
+    lintingDrift.push('Missing ESLint configuration');
   }
 
   // Check extension drift silently (no UI prompts)
   const missing = checkMissingExtensionsSilent();
   extensionDrift.push(...missing.map(id => `Missing extension: ${id}`));
 
-  const hasAnyDrift = configDrift.length > 0 || extensionDrift.length > 0 || lintingDrift.length > 0;
+  const hasAnyDrift = configDrift.length > 0 ||
+                      extensionDrift.length > 0 ||
+                      lintingDrift.length > 0 ||
+                      megalinterDrift.length > 0 ||
+                      configurationDrift.length > 0 ||
+                      performanceDrift.length > 0;
   
-  return { configDrift, extensionDrift, lintingDrift, hasAnyDrift };
+  return {
+    configDrift,
+    extensionDrift,
+    lintingDrift,
+    megalinterDrift,
+    configurationDrift,
+    performanceDrift,
+    hasAnyDrift
+  };
 }
 
 async function fixAllDrift(drift: DriftDetection): Promise<void> {
@@ -457,20 +606,40 @@ async function selectiveDriftFix(drift: DriftDetection): Promise<void> {
 }
 
 async function showDriftDetails(drift: DriftDetection): Promise<void> {
+  const sections: string[] = [];
+  
+  if (drift.configDrift.length > 0) {
+    sections.push(`**Config Issues (${drift.configDrift.length}):**\n${drift.configDrift.map(item => `• ${item}`).join('\n')}`);
+  }
+  
+  if (drift.megalinterDrift && drift.megalinterDrift.length > 0) {
+    sections.push(`**MegaLinter Issues (${drift.megalinterDrift.length}):**\n${drift.megalinterDrift.map(item => `• ${item}`).join('\n')}`);
+  }
+  
+  if (drift.configurationDrift && drift.configurationDrift.length > 0) {
+    sections.push(`**Configuration Drift (${drift.configurationDrift.length}):**\n${drift.configurationDrift.map(item => `• ${item}`).join('\n')}`);
+  }
+  
+  if (drift.performanceDrift && drift.performanceDrift.length > 0) {
+    sections.push(`**Performance Issues (${drift.performanceDrift.length}):**\n${drift.performanceDrift.map(item => `• ${item}`).join('\n')}`);
+  }
+  
+  if (drift.extensionDrift.length > 0) {
+    sections.push(`**Extension Issues (${drift.extensionDrift.length}):**\n${drift.extensionDrift.map(item => `• ${item}`).join('\n')}`);
+  }
+  
+  if (drift.lintingDrift.length > 0) {
+    sections.push(`**Legacy Linting Issues (${drift.lintingDrift.length}):**\n${drift.lintingDrift.map(item => `• ${item}`).join('\n')}`);
+  }
+  
   const details = `**Configuration Drift Details**
 
-**Config Issues (${drift.configDrift.length}):**
-${drift.configDrift.map(item => `• ${item}`).join('\n') || '• None'}
+${sections.join('\n\n')}
 
-**Extension Issues (${drift.extensionDrift.length}):**
-${drift.extensionDrift.map(item => `• ${item}`).join('\n') || '• None'}
+${sections.length === 0 ? 'No drift detected - your setup is aligned with organization standards!' : 'These issues indicate your local setup has drifted from organization standards. Regular fixes help maintain consistency, security, and performance.'}`;
 
-**Linting Issues (${drift.lintingDrift.length}):**
-${drift.lintingDrift.map(item => `• ${item}`).join('\n') || '• None'}
-
-These issues indicate your local setup has drifted from organization standards. Regular fixes help maintain consistency and security.`;
-
-  vscode.window.showInformationMessage(details, "Fix Now", "Ignore");
+  const actions = sections.length > 0 ? ["Fix Now", "Ignore"] : ["OK"];
+  vscode.window.showInformationMessage(details, ...actions);
 }
 
 async function showOnboardingInfo(): Promise<void> {

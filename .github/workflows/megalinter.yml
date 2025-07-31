@@ -1,0 +1,501 @@
+name: MegaLinter Code Quality & Security Analysis
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - '**/*.ts'
+      - '**/*.js'
+      - '**/*.json'
+      - '**/*.yml'
+      - '**/*.yaml'
+      - '**/*.md'
+      - 'src/**'
+      - '.github/workflows/**'
+      - 'package*.json'
+      - 'tsconfig*.json'
+      - '.mega-linter.yml'
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 2 * * 1' # Weekly on Monday at 2 AM
+  workflow_dispatch:
+    inputs:
+      megalinter_profile:
+        description: 'MegaLinter profile to use'
+        required: false
+        default: 'balanced'
+        type: choice
+        options:
+          - fast
+          - balanced
+          - thorough
+      full_repository_scan:
+        description: 'Scan entire repository (not just changed files)'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  MEGALINTER_CONFIG: .mega-linter.yml
+  LOG_LEVEL: INFO
+  REPORT_OUTPUT_FOLDER: megalinter-reports
+  APPLY_FIXES: none
+  DEFAULT_BRANCH: main
+  DEFAULT_WORKSPACE: ${{ github.workspace }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  VALIDATE_ALL_CODEBASE: ${{ github.event.inputs.full_repository_scan == 'true' || github.event_name == 'schedule' }}
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  security-events: write
+  actions: read
+
+concurrency:
+  group: megalinter-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository-analysis:
+    name: Repository Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      profile: ${{ steps.analyze.outputs.profile }}
+      complexity: ${{ steps.analyze.outputs.complexity }}
+      languages: ${{ steps.analyze.outputs.languages }}
+      recommended-profile: ${{ steps.analyze.outputs.recommended-profile }}
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Analyze Repository Profile
+        id: analyze
+        run: |
+          echo "🔍 Analyzing repository structure and complexity..."
+          
+          # Detect primary languages
+          languages=()
+          if [ -f "package.json" ] && find . -name "*.ts" -o -name "*.js" | head -1 | grep -q .; then
+            languages+=("typescript" "javascript")
+            echo "✅ TypeScript/JavaScript detected"
+          fi
+          
+          # Count files and complexity
+          total_files=$(find . -type f -name "*.ts" -o -name "*.js" -o -name "*.json" | wc -l)
+          total_dirs=$(find . -type d | wc -l)
+          
+          # Determine complexity
+          if [ $total_files -lt 50 ] && [ $total_dirs -lt 10 ]; then
+            complexity="simple"
+            recommended_profile="fast"
+          elif [ $total_files -lt 200 ] && [ $total_dirs -lt 30 ]; then
+            complexity="moderate"
+            recommended_profile="balanced"
+          else
+            complexity="complex"
+            recommended_profile="thorough"
+          fi
+          
+          # VSCode extension specific detection
+          if [ -f "package.json" ] && grep -q "vscode" package.json; then
+            echo "🎯 VSCode extension project detected"
+            profile="vscode-extension"
+          else
+            profile="general"
+          fi
+          
+          # Output results
+          echo "📊 Repository Analysis Results:"
+          echo "  - Profile: $profile"
+          echo "  - Complexity: $complexity"  
+          echo "  - Languages: ${languages[*]}"
+          echo "  - Recommended Profile: $recommended_profile"
+          echo "  - Total Files: $total_files"
+          
+          # Set outputs
+          echo "profile=$profile" >> $GITHUB_OUTPUT
+          echo "complexity=$complexity" >> $GITHUB_OUTPUT
+          echo "languages=${languages[*]}" >> $GITHUB_OUTPUT
+          echo "recommended-profile=$recommended_profile" >> $GITHUB_OUTPUT
+
+  megalinter:
+    name: MegaLinter Analysis
+    runs-on: ubuntu-latest
+    needs: repository-analysis
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: |
+          if [ -f "package-lock.json" ]; then
+            npm ci --prefer-offline
+          elif [ -f "yarn.lock" ]; then
+            yarn install --frozen-lockfile
+          else
+            npm install
+          fi
+
+      - name: Cache MegaLinter
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/megalinter
+            /tmp/megalinter-cache
+          key: megalinter-${{ runner.os }}-${{ needs.repository-analysis.outputs.complexity }}-${{ hashFiles('**/.mega-linter.yml', '**/package*.json') }}
+          restore-keys: |
+            megalinter-${{ runner.os }}-${{ needs.repository-analysis.outputs.complexity }}-
+            megalinter-${{ runner.os }}-
+
+      - name: Generate MegaLinter Configuration
+        run: |
+          echo "⚙️ Generating optimized MegaLinter configuration..."
+          
+          cat > .mega-linter.yml << 'EOF'
+          # MegaLinter Configuration - Auto-generated for VSCode Extension
+          MEGALINTER_CONFIG: "7.0.0"
+          
+          # Performance Settings
+          PARALLEL: true
+          SHOW_ELAPSED_TIME: true
+          FILEIO_REPORTER: true
+          
+          # VSCode Extension Specific Linters
+          ENABLE_LINTERS:
+            - TYPESCRIPT_ES
+            - TYPESCRIPT_PRETTIER
+            - JAVASCRIPT_ES
+            - JSON_JSONLINT
+            - JSON_PRETTIER
+            - YAML_YAMLLINT
+            - YAML_PRETTIER
+            - MARKDOWN_MARKDOWNLINT
+            - REPOSITORY_SECRETLINT
+            - REPOSITORY_SEMGREP
+            - REPOSITORY_TRIVY
+          
+          # Disable noisy linters for extension development
+          DISABLE_LINTERS:
+            - SPELL_CSPELL
+            - COPYPASTE_JSCPD
+            - REPOSITORY_GITLEAKS
+          
+          # TypeScript/JavaScript Configuration
+          TYPESCRIPT_ES_CONFIG_FILE: eslint.config.js
+          TYPESCRIPT_ES_DISABLE_ERRORS: false
+          JAVASCRIPT_ES_CONFIG_FILE: eslint.config.js
+          JAVASCRIPT_ES_DISABLE_ERRORS: false
+          
+          # File Filtering
+          FILTER_REGEX_EXCLUDE: |
+            (\.git/)
+            (node_modules/)
+            (dist/)
+            (out/)
+            (\.vscode/settings\.json)
+            (.*\.vsix)
+            (package-lock\.json)
+          
+          # Reporting
+          OUTPUT_FORMAT: json,sarif,text
+          OUTPUT_DETAIL: detailed
+          SARIF_REPORTER: true
+          LOG_LEVEL: INFO
+          TIMEOUT_SECONDS: 1800
+          EOF
+          
+          echo "✅ MegaLinter configuration generated"
+
+      - name: Run MegaLinter
+        uses: oxsecurity/megalinter@v7
+        env:
+          DEFAULT_WORKSPACE: ${{ github.workspace }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MEGALINTER_PROFILE: ${{ github.event.inputs.megalinter_profile || needs.repository-analysis.outputs.recommended-profile }}
+          VALIDATE_ALL_CODEBASE: ${{ env.VALIDATE_ALL_CODEBASE }}
+          PARALLEL: ${{ needs.repository-analysis.outputs.complexity != 'simple' }}
+          REPORT_OUTPUT_FOLDER: ${{ env.REPORT_OUTPUT_FOLDER }}
+          OUTPUT_FORMAT: json,sarif,text
+          OUTPUT_DETAIL: detailed
+          FILEIO_REPORTER: true
+          GITHUB_STATUS_REPORTER: true
+
+      - name: Process MegaLinter Results
+        if: always()
+        run: |
+          echo "📊 Processing MegaLinter analysis results..."
+          
+          if [ -f "$REPORT_OUTPUT_FOLDER/megalinter.json" ]; then
+            echo "✅ MegaLinter analysis completed successfully"
+            
+            if command -v jq >/dev/null 2>&1; then
+              echo "📈 Analysis Summary:"
+              echo "  - Execution time: $(jq -r '.elapsed_time // "N/A"' $REPORT_OUTPUT_FOLDER/megalinter.json)"
+              echo "  - Linters executed: $(jq -r '.linters_statistics.linters_number // "N/A"' $REPORT_OUTPUT_FOLDER/megalinter.json)"
+            fi
+            
+            if [ -f "$REPORT_OUTPUT_FOLDER/megalinter.sarif" ]; then
+              echo "🔍 SARIF report generated for security analysis"
+            fi
+          else
+            echo "⚠️ MegaLinter results not found - checking for errors"
+            
+            if [ -d "$REPORT_OUTPUT_FOLDER/linters_logs" ]; then
+              echo "📋 Linter logs available for debugging"
+              ls -la $REPORT_OUTPUT_FOLDER/linters_logs/
+            fi
+          fi
+
+      - name: Upload MegaLinter Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: megalinter-reports-${{ github.run_number }}
+          path: |
+            ${{ env.REPORT_OUTPUT_FOLDER }}/
+            .mega-linter.yml
+          retention-days: 30
+
+      - name: Upload SARIF Results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        if: always() && hashFiles('megalinter-reports/megalinter.sarif') != ''
+        with:
+          sarif_file: ${{ env.REPORT_OUTPUT_FOLDER }}/megalinter.sarif
+        continue-on-error: true
+
+  extension-validation:
+    name: VSCode Extension Validation
+    runs-on: ubuntu-latest
+    needs: [repository-analysis, megalinter]
+    if: needs.repository-analysis.outputs.profile == 'vscode-extension'
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Compile Extension
+        run: |
+          echo "🔨 Compiling VSCode extension..."
+          npm run build || npm run compile || npx tsc
+
+      - name: Package Extension
+        run: |
+          echo "📦 Packaging VSCode extension..."
+          npm run package || npx vsce package --no-dependencies
+
+      - name: Validate Extension Manifest
+        run: |
+          echo "🔍 Validating extension manifest..."
+          
+          if [ -f "package.json" ]; then
+            if ! jq -e '.engines.vscode' package.json >/dev/null; then
+              echo "❌ Missing engines.vscode in package.json"
+              exit 1
+            fi
+            
+            if ! jq -e '.main' package.json >/dev/null; then
+              echo "❌ Missing main entry point in package.json"
+              exit 1
+            fi
+            
+            if ! jq -e '.contributes' package.json >/dev/null; then
+              echo "⚠️ No contributes section found - extension may not provide functionality"
+            fi
+            
+            echo "✅ Extension manifest validation passed"
+          else
+            echo "❌ package.json not found"
+            exit 1
+          fi
+
+      - name: Upload Extension Artifact
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: vscode-extension-${{ github.run_number }}
+          path: "*.vsix"
+          retention-days: 14
+
+  security-compliance:
+    name: Security & Compliance Check
+    runs-on: ubuntu-latest
+    needs: megalinter
+    timeout-minutes: 20
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download MegaLinter Reports
+        uses: actions/download-artifact@v4
+        with:
+          name: megalinter-reports-${{ github.run_number }}
+          path: reports/
+
+      - name: Run Additional Security Scans
+        run: |
+          echo "🔒 Running additional security validation..."
+          
+          echo "🔍 Checking for sensitive files..."
+          if find . -name "*.key" -o -name "*.pem" -o -name "*.p12" | grep -q .; then
+            echo "⚠️ Potential sensitive files found"
+            find . -name "*.key" -o -name "*.pem" -o -name "*.p12"
+          fi
+          
+          if [ -f "package.json" ]; then
+            echo "📦 Analyzing package.json for security..."
+            if jq -e '.scripts | to_entries[] | select(.value | test("rm -rf|sudo|curl.*sh"))' package.json >/dev/null 2>&1; then
+              echo "⚠️ Potentially dangerous scripts found in package.json"
+            fi
+          fi
+          
+          echo "🔧 Validating GitHub Actions security..."
+          for workflow in .github/workflows/*.yml .github/workflows/*.yaml; do
+            if [ -f "$workflow" ]; then
+              echo "Checking $workflow"
+              if grep -q "uses:.*@main\|uses:.*@master" "$workflow"; then
+                echo "⚠️ Unpinned action versions found in $workflow"
+              fi
+              if grep -qi "password\|secret\|token\|key.*=" "$workflow"; then
+                echo "⚠️ Potential hardcoded secrets in $workflow"
+              fi
+            fi
+          done
+          
+          echo "✅ Security compliance check completed"
+
+      - name: Generate Security Report
+        run: |
+          echo "📊 Generating comprehensive security report..."
+          
+          mkdir -p security-reports
+          
+          cat > security-reports/security-summary.md << 'EOF'
+          # Security & Compliance Report
+          
+          ## MegaLinter Security Analysis
+          - SARIF report: Available in Security tab
+          - Secret scanning: Completed via MegaLinter
+          - Vulnerability analysis: Completed via MegaLinter
+          
+          ## Additional Security Checks
+          - Sensitive file scan: Completed
+          - Package.json analysis: Completed
+          - GitHub Actions security: Completed
+          
+          ## Recommendations
+          - Review any warnings in the workflow logs
+          - Ensure all third-party actions are pinned to specific versions
+          - Regularly update dependencies to address known vulnerabilities
+          EOF
+          
+          echo "✅ Security report generated"
+
+      - name: Upload Security Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports-${{ github.run_number }}
+          path: security-reports/
+          retention-days: 30
+
+  analysis-summary:
+    name: Analysis Summary
+    runs-on: ubuntu-latest
+    needs: [repository-analysis, megalinter, extension-validation, security-compliance]
+    if: always()
+    timeout-minutes: 5
+    
+    steps:
+      - name: Generate Analysis Summary
+        run: |
+          echo "📋 Generating comprehensive analysis summary..."
+          
+          repository_analysis_status="${{ needs.repository-analysis.result }}"
+          megalinter_status="${{ needs.megalinter.result }}"
+          extension_validation_status="${{ needs.extension-validation.result }}"
+          security_compliance_status="${{ needs.security-compliance.result }}"
+          
+          echo "Analysis Summary for ${{ github.repository }}"
+          echo "Repository Profile: ${{ needs.repository-analysis.outputs.profile }} (${{ needs.repository-analysis.outputs.complexity }})"
+          echo "Languages: ${{ needs.repository-analysis.outputs.languages }}"
+          echo "MegaLinter Profile: ${{ github.event.inputs.megalinter_profile || needs.repository-analysis.outputs.recommended-profile }}"
+          echo ""
+          echo "Job Results:"
+          echo "- Repository Analysis: $repository_analysis_status"
+          echo "- MegaLinter Analysis: $megalinter_status"
+          echo "- Extension Validation: $extension_validation_status"
+          echo "- Security Compliance: $security_compliance_status"
+          echo ""
+          echo "Artifacts Available:"
+          echo "- MegaLinter Reports: megalinter-reports-${{ github.run_number }}"
+          if [ "${{ needs.extension-validation.result }}" = "success" ]; then
+            echo "- VSCode Extension: vscode-extension-${{ github.run_number }}"
+          fi
+          echo "- Security Reports: security-reports-${{ github.run_number }}"
+          echo ""
+          echo "Workflow Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          
+          if [ "$megalinter_status" = "success" ] && [ "$security_compliance_status" = "success" ]; then
+            echo "✅ Overall Status: PASSED"
+          else
+            echo "❌ Overall Status: FAILED"
+          fi
+
+      - name: Create Issue on Failure
+        if: failure() && github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = 'Scheduled MegaLinter Analysis Failed';
+            const body = `## Scheduled Analysis Failure
+            
+            The scheduled MegaLinter analysis has failed for this repository.
+            
+            **Details:**
+            - Repository: ${{ github.repository }}
+            - Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            - Profile: ${{ needs.repository-analysis.outputs.profile }} (${{ needs.repository-analysis.outputs.complexity }})
+            - Branch: ${{ github.ref_name }}
+            
+            **Job Results:**
+            - Repository Analysis: ${{ needs.repository-analysis.result }}
+            - MegaLinter Analysis: ${{ needs.megalinter.result }}
+            - Extension Validation: ${{ needs.extension-validation.result }}
+            - Security Compliance: ${{ needs.security-compliance.result }}
+            
+            Please review the workflow logs and address any issues found during the analysis.`;
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['megalinter', 'code-quality', 'automated-issue']
+            });

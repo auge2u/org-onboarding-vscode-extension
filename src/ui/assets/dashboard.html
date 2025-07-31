@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{CSS_URI}} 'unsafe-inline'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; img-src data: https:; font-src https://fonts.googleapis.com https://fonts.gstatic.com;">
+    <title>MegaLinter Analytics Dashboard</title>
+    
+    <!-- Chart.js from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{CSS_URI}}">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="dashboard-body">
+    <!-- Dashboard Header -->
+    <header class="dashboard-header">
+        <div class="header-content">
+            <div class="header-left">
+                <h1 class="dashboard-title">
+                    <span class="icon">🎯</span>
+                    MegaLinter Analytics
+                </h1>
+                <div class="subtitle">Real-time code quality insights and remediation guidance</div>
+            </div>
+            <div class="header-right">
+                <div class="header-controls">
+                    <button id="refresh-btn" class="control-btn" title="Refresh Data">
+                        <span class="icon">🔄</span>
+                    </button>
+                    <button id="export-btn" class="control-btn" title="Export Data">
+                        <span class="icon">📁</span>
+                    </button>
+                    <button id="settings-btn" class="control-btn" title="Settings">
+                        <span class="icon">⚙️</span>
+                    </button>
+                </div>
+                <div class="status-indicator" id="status-indicator">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Connecting...</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="dashboard-nav">
+        <div class="nav-container">
+            <button class="nav-tab active" data-view="overview">
+                <span class="tab-icon">📊</span>
+                Overview
+            </button>
+            <button class="nav-tab" data-view="trends">
+                <span class="tab-icon">📈</span>
+                Trends
+            </button>
+            <button class="nav-tab" data-view="heatmap">
+                <span class="tab-icon">🗺️</span>
+                Heat Map
+            </button>
+            <button class="nav-tab" data-view="remediation">
+                <span class="tab-icon">🔧</span>
+                Remediation
+            </button>
+            <button class="nav-tab" data-view="performance">
+                <span class="tab-icon">⚡</span>
+                Performance
+            </button>
+        </div>
+    </nav>
+
+    <!-- Dashboard Content -->
+    <main class="dashboard-main">
+        <!-- Loading State -->
+        <div id="loading-view" class="dashboard-view active">
+            <div class="loading-container">
+                <div class="loading-spinner"></div>
+                <h3>Loading Dashboard...</h3>
+                <p>Initializing MegaLinter analytics and visualization components...</p>
+            </div>
+        </div>
+
+        <!-- Error State -->
+        <div id="error-view" class="dashboard-view">
+            <div class="error-container">
+                <div class="error-icon">❌</div>
+                <h3>Dashboard Error</h3>
+                <p id="error-message">Unable to load dashboard data</p>
+                <button class="btn btn-primary" onclick="refreshDashboard()">Try Again</button>
+            </div>
+        </div>
+
+        <!-- Overview View -->
+        <div id="overview-view" class="dashboard-view">
+            <div class="view-header">
+                <h2>Quality Overview</h2>
+                <div class="view-actions">
+                    <select id="time-range-selector" class="select-input">
+                        <option value="7d">Last 7 days</option>
+                        <option value="30d" selected>Last 30 days</option>
+                        <option value="90d">Last 90 days</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Key Metrics Grid -->
+            <div class="metrics-grid">
+                <div class="metric-card quality-score">
+                    <div class="metric-header">
+                        <h3>Quality Score</h3>
+                        <span class="metric-icon">🎯</span>
+                    </div>
+                    <div class="metric-value" id="quality-score">--</div>
+                    <div class="metric-trend" id="quality-trend">
+                        <span class="trend-icon">📊</span>
+                        <span class="trend-text">Loading...</span>
+                    </div>
+                </div>
+
+                <div class="metric-card total-issues">
+                    <div class="metric-header">
+                        <h3>Total Issues</h3>
+                        <span class="metric-icon">🔍</span>
+                    </div>
+                    <div class="metric-value" id="total-issues">--</div>
+                    <div class="metric-detail" id="fixable-issues">-- fixable</div>
+                </div>
+
+                <div class="metric-card error-count">
+                    <div class="metric-header">
+                        <h3>Errors</h3>
+                        <span class="metric-icon">❌</span>
+                    </div>
+                    <div class="metric-value error" id="error-count">--</div>
+                    <div class="metric-detail">Critical issues</div>
+                </div>
+
+                <div class="metric-card warning-count">
+                    <div class="metric-header">
+                        <h3>Warnings</h3>
+                        <span class="metric-icon">⚠️</span>
+                    </div>
+                    <div class="metric-value warning" id="warning-count">--</div>
+                    <div class="metric-detail">Needs attention</div>
+                </div>
+
+                <div class="metric-card cicd-status">
+                    <div class="metric-header">
+                        <h3>CI/CD Status</h3>
+                        <span class="metric-icon">🚀</span>
+                    </div>
+                    <div class="metric-value" id="cicd-status">--</div>
+                    <div class="metric-detail" id="cicd-detail">--</div>
+                </div>
+
+                <div class="metric-card last-scan">
+                    <div class="metric-header">
+                        <h3>Last Scan</h3>
+                        <span class="metric-icon">⏰</span>
+                    </div>
+                    <div class="metric-value" id="last-scan">--</div>
+                    <div class="metric-detail" id="scan-duration">--</div>
+                </div>
+            </div>
+
+            <!-- Charts Grid -->
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3>Quality Trend</h3>
+                        <div class="chart-controls">
+                            <button class="chart-control-btn" onclick="toggleChartType('quality-trend-chart', 'line')">Line</button>
+                            <button class="chart-control-btn" onclick="toggleChartType('quality-trend-chart', 'bar')">Bar</button>
+                        </div>
+                    </div>
+                    <div class="chart-content">
+                        <canvas id="quality-trend-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3>Issue Distribution</h3>
+                    </div>
+                    <div class="chart-content">
+                        <canvas id="severity-distribution-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-container span-2">
+                    <div class="chart-header">
+                        <h3>Code Quality Radar</h3>
+                        <div class="chart-info">
+                            <span class="info-tooltip" title="Overall assessment of code quality dimensions">ℹ️</span>
+                        </div>
+                    </div>
+                    <div class="chart-content">
+                        <canvas id="overview-radar-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trends View -->
+        <div id="trends-view" class="dashboard-view">
+            <div class="view-header">
+                <h2>Trend Analysis</h2>
+                <div class="view-actions">
+                    <div class="filter-group">
+                        <label>Metric:</label>
+                        <select id="trend-metric-selector" class="select-input">
+                            <option value="quality">Quality Score</option>
+                            <option value="issues">Issue Count</option>
+                            <option value="performance">Performance</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="charts-grid trends-charts">
+                <div class="chart-container span-2">
+                    <div class="chart-header">
+                        <h3>Issue Types Over Time</h3>
+                    </div>
+                    <div class="chart-content">
+                        <canvas id="issue-types-trend-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3>Performance Trend</h3>
+                    </div>
+                    <div class="chart-content">
+                        <canvas id="performance-trend-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-container span-2">
+                    <div class="chart-header">
+                        <h3>Weekly Progress</h3>
+                    </div>
+                    <div class="chart-content">
+                        <canvas id="weekly-progress-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3>Linter Performance</h3>
+                    </div>
+                    <div class="chart-content">
+                        <canvas id="linter-performance-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Heat Map View -->
+        <div id="heatmap-view" class="dashboard-view">
+            <div class="view-header">
+                <h2>Code Quality Heat Map</h2>
+                <div class="view-actions">
+                    <div class="filter-group">
+                        <label>View:</label>
+                        <select id="heatmap-view-selector" class="select-input">
+                            <option value="files">Files</option>
+                            <option value="directories">Directories</option>
+                            <option value="linters">Linters</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Severity:</label>
+                        <select id="severity-filter" class="select-input">
+                            <option value="all">All Issues</option>
+                            <option value="error">Errors Only</option>
+                            <option value="warning">Warnings Only</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- File Heat Map -->
+            <div id="file-heatmap-content" class="heatmap-content">
+                <div class="heatmap-legend">
+                    <h4>Issue Severity</h4>
+                    <div class="legend-items">
+                        <div class="legend-item">
+                            <div class="legend-color high-severity"></div>
+                            <span>High (10+ issues)</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color medium-severity"></div>
+                            <span>Medium (5-9 issues)</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color low-severity"></div>
+                            <span>Low (1-4 issues)</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color no-issues"></div>
+                            <span>No issues</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="file-grid" id="file-heatmap-grid">
+                    <!-- Dynamic file heat map tiles will be inserted here -->
+                </div>
+            </div>
+
+            <!-- Directory Heat Map -->
+            <div id="directory-heatmap-content" class="heatmap-content" style="display: none;">
+                <div class="directory-list" id="directory-heatmap-list">
+                    <!-- Dynamic directory items will be inserted here -->
+                </div>
+            </div>
+
+            <!-- Linter Heat Map -->
+            <div id="linter-heatmap-content" class="heatmap-content" style="display: none;">
+                <div class="chart-container">
+                    <canvas id="file-heatmap-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Remediation View -->
+        <div id="remediation-view" class="dashboard-view">
+            <div class="view-header">
+                <h2>Remediation Center</h2>
+                <div class="view-actions">
+                    <div class="filter-group">
+                        <label>Priority:</label>
+                        <select id="priority-filter" class="select-input">
+                            <option value="all">All Priorities</option>
+                            <option value="critical">Critical</option>
+                            <option value="high">High</option>
+                            <option value="medium">Medium</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" onclick="runAutoFix()">
+                        <span class="icon">🔧</span>
+                        Auto-fix Issues
+                    </button>
+                </div>
+            </div>
+
+            <div class="remediation-content">
+                <div class="remediation-summary">
+                    <div class="summary-card">
+                        <h3>Fixable Issues</h3>
+                        <div class="summary-value" id="fixable-issues-count">--</div>
+                    </div>
+                    <div class="summary-card">
+                        <h3>Estimated Time</h3>
+                        <div class="summary-value" id="estimated-fix-time">--</div>
+                    </div>
+                    <div class="summary-card">
+                        <h3>Automation Available</h3>
+                        <div class="summary-value" id="automation-count">--</div>
+                    </div>
+                </div>
+
+                <div class="remediation-list" id="remediation-items">
+                    <!-- Dynamic remediation items will be inserted here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Performance View -->
+        <div id="performance-view" class="dashboard-view">
+            <div class="view-header">
+                <h2>Performance Analytics</h2>
+                <div class="view-actions">
+                    <button class="btn btn-secondary" onclick="optimizePerformance()">
+                        <span class="icon">⚡</span>
+                        Optimize Configuration
+                    </button>
+                </div>
+            </div>
+
+            <div class="performance-content">
+                <div class="performance-metrics">
+                    <div class="perf-metric">
+                        <h4>Execution Time</h4>
+                        <div class="perf-value" id="execution-time">--</div>
+                        <div class="perf-unit">seconds</div>
+                    </div>
+                    <div class="perf-metric">
+                        <h4>Memory Usage</h4>
+                        <div class="perf-value" id="memory-usage">--</div>
+                        <div class="perf-unit">MB</div>
+                    </div>
+                    <div class="perf-metric">
+                        <h4>Cache Hit Rate</h4>
+                        <div class="perf-value" id="cache-hit-rate">--</div>
+                        <div class="perf-unit">%</div>
+                    </div>
+                    <div class="perf-metric">
+                        <h4>Linters Run</h4>
+                        <div class="perf-value" id="linters-run">--</div>
+                        <div class="perf-unit">total</div>
+                    </div>
+                </div>
+
+                <div class="performance-recommendations" id="performance-recommendations">
+                    <!-- Dynamic performance recommendations will be inserted here -->
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Export Modal -->
+    <div id="export-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Export Dashboard Data</h3>
+                <button class="modal-close" onclick="closeModal('export-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="export-options">
+                    <label class="radio-label">
+                        <input type="radio" name="export-format" value="json" checked>
+                        <span>JSON - Raw data format</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="export-format" value="csv">
+                        <span>CSV - Spreadsheet compatible</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="export-format" value="html">
+                        <span>HTML - Formatted report</span>
+                    </label>
+                </div>
+                <div class="export-options">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="include-charts" checked>
+                        <span>Include charts and visualizations</span>
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="include-trends" checked>
+                        <span>Include trend analysis</span>
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="include-remediation" checked>
+                        <span>Include remediation guidance</span>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('export-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="exportData()">Export</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Dashboard Settings</h3>
+                <button class="modal-close" onclick="closeModal('settings-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="settings-section">
+                    <h4>Display</h4>
+                    <div class="setting-item">
+                        <label>Theme:</label>
+                        <select id="theme-selector" class="select-input">
+                            <option value="dark">Dark</option>
+                            <option value="light">Light</option>
+                            <option value="high-contrast">High Contrast</option>
+                        </select>
+                    </div>
+                    <div class="setting-item">
+                        <label>Refresh Interval:</label>
+                        <select id="refresh-interval" class="select-input">
+                            <option value="60000">1 minute</option>
+                            <option value="300000" selected>5 minutes</option>
+                            <option value="600000">10 minutes</option>
+                            <option value="0">Manual only</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="settings-section">
+                    <h4>Notifications</h4>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="quality-alerts" checked>
+                        <span>Quality threshold alerts</span>
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="cicd-alerts" checked>
+                        <span>CI/CD failure alerts</span>
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="performance-alerts">
+                        <span>Performance degradation alerts</span>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('settings-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom JavaScript -->
+    <script src="{{JS_URI}}"></script>
+</body>
+</html>

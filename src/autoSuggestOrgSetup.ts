@@ -1,12 +1,15 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
+import { MegaLinterOrchestrator } from "./megalinter/orchestrator";
+import { UserPreferences } from "./megalinter/types";
 
 // Global flag to prevent concurrent setup operations
 let isSetupInProgress = false;
 
 export interface OrgStandardsCheck {
   trunkExists: boolean;
+  megalinterExists: boolean;
   eslintExists: boolean;
   extensionsJsonExists: boolean;
   gitHooksExists: boolean;
@@ -62,11 +65,13 @@ export async function suggestOrgSetup(repo: string, org: string): Promise<void> 
 async function checkOrgStandards(rootPath: string): Promise<OrgStandardsCheck> {
   return {
     trunkExists: fs.existsSync(path.join(rootPath, '.trunk', 'trunk.yaml')),
-    eslintExists: fs.existsSync(path.join(rootPath, 'eslint.config.js')) || 
+    megalinterExists: fs.existsSync(path.join(rootPath, '.mega-linter.yml')) ||
+                      fs.existsSync(path.join(rootPath, '.megalinter.yml')),
+    eslintExists: fs.existsSync(path.join(rootPath, 'eslint.config.js')) ||
                   fs.existsSync(path.join(rootPath, '.eslintrc.js')) ||
                   fs.existsSync(path.join(rootPath, '.eslintrc.json')),
     extensionsJsonExists: fs.existsSync(path.join(rootPath, '.vscode', 'extensions.json')),
-    gitHooksExists: fs.existsSync(path.join(rootPath, '.husky')) || 
+    gitHooksExists: fs.existsSync(path.join(rootPath, '.husky')) ||
                     fs.existsSync(path.join(rootPath, '.git', 'hooks', 'pre-commit')),
     ciConfigExists: fs.existsSync(path.join(rootPath, '.github', 'workflows')) ||
                     fs.existsSync(path.join(rootPath, '.gitlab-ci.yml')) ||
@@ -79,9 +84,13 @@ async function checkOrgStandards(rootPath: string): Promise<OrgStandardsCheck> {
 function getMissingStandards(standards: OrgStandardsCheck): string[] {
   const missing: string[] = [];
   
-  if (!standards.trunkExists) {
-    missing.push("Trunk linting configuration (.trunk/trunk.yaml)");
+  // Prefer MegaLinter over Trunk, but support both
+  if (!standards.megalinterExists && !standards.trunkExists) {
+    missing.push("MegaLinter configuration (.mega-linter.yml) - Advanced linting with 400+ linters");
+  } else if (standards.trunkExists && !standards.megalinterExists) {
+    missing.push("MegaLinter upgrade (replace Trunk with MegaLinter for enhanced capabilities)");
   }
+  
   if (!standards.eslintExists) {
     missing.push("ESLint configuration (eslint.config.js)");
   }
@@ -113,7 +122,11 @@ async function setupAllStandards(rootPath: string, missing: string[]): Promise<v
   
   try {
     for (const item of missing) {
-      if (item.includes("Trunk")) {
+      if (item.includes("MegaLinter")) {
+        await setupMegaLinterConfig(rootPath);
+        setupCount++;
+      } else if (item.includes("Trunk") && !item.includes("MegaLinter")) {
+        // Legacy Trunk support - still functional but will suggest MegaLinter upgrade
         await setupTrunkConfig(rootPath);
         setupCount++;
       } else if (item.includes("ESLint")) {
@@ -136,10 +149,13 @@ async function setupAllStandards(rootPath: string, missing: string[]): Promise<v
     
     vscode.window.showInformationMessage(
       `✅ Successfully set up ${setupCount} organization standards!`,
-      "View Changes"
+      "View Changes",
+      "Test MegaLinter"
     ).then((choice: string | undefined) => {
       if (choice === "View Changes") {
         vscode.commands.executeCommand("workbench.scm.focus");
+      } else if (choice === "Test MegaLinter") {
+        testMegaLinterSetup(rootPath);
       }
     });
     
@@ -352,27 +368,150 @@ updates:
   fs.writeFileSync(dependabotPath, dependabotConfig);
 }
 
+async function setupMegaLinterConfig(rootPath: string): Promise<void> {
+  try {
+    const orchestrator = new MegaLinterOrchestrator();
+    
+    // Show progress notification
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: "Setting up MegaLinter configuration...",
+      cancellable: false
+    }, async (progress) => {
+      progress.report({ increment: 20, message: "Analyzing repository..." });
+      
+      // Analyze repository to get language profile
+      const profile = await orchestrator.detectLanguages(rootPath);
+      
+      progress.report({ increment: 40, message: "Selecting optimal linters..." });
+      
+      // Generate optimal configuration
+      const config = await orchestrator.generateConfiguration(profile, []);
+      
+      progress.report({ increment: 60, message: "Generating configuration file..." });
+      
+      // Export configuration to .mega-linter.yml
+      const configGenerator = orchestrator['configGenerator']; // Access private field
+      if (configGenerator) {
+        const yamlConfig = await configGenerator.exportToYaml(config);
+        const configPath = path.join(rootPath, '.mega-linter.yml');
+        fs.writeFileSync(configPath, yamlConfig, 'utf8');
+      }
+      
+      progress.report({ increment: 80, message: "Creating Docker ignore file..." });
+      
+      // Create .dockerignore for better MegaLinter performance
+      const dockerignorePath = path.join(rootPath, '.dockerignore');
+      if (!fs.existsSync(dockerignorePath)) {
+        const dockerignoreContent = `node_modules/
+dist/
+build/
+coverage/
+*.log
+.git/
+.vscode/
+.idea/
+*.tmp
+*.temp`;
+        fs.writeFileSync(dockerignorePath, dockerignoreContent);
+      }
+      
+      progress.report({ increment: 100, message: "MegaLinter setup complete!" });
+    });
+    
+    // Show setup summary
+    vscode.window.showInformationMessage(
+      "🚀 MegaLinter configured successfully! Configuration includes intelligent linter selection based on your project structure.",
+      "View Config",
+      "Run MegaLinter"
+    ).then((choice: string | undefined) => {
+      if (choice === "View Config") {
+        vscode.workspace.openTextDocument(path.join(rootPath, '.mega-linter.yml'))
+          .then(doc => vscode.window.showTextDocument(doc));
+      } else if (choice === "Run MegaLinter") {
+        testMegaLinterSetup(rootPath);
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error setting up MegaLinter:', error);
+    vscode.window.showErrorMessage(`Failed to setup MegaLinter: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+async function testMegaLinterSetup(rootPath: string): Promise<void> {
+  const orchestrator = new MegaLinterOrchestrator();
+  
+  try {
+    // Check Docker availability first
+    const status = await orchestrator.getStatus();
+    
+    if (!status.dockerAvailable) {
+      vscode.window.showErrorMessage(
+        "Docker is required to run MegaLinter. Please install Docker and try again.",
+        "Install Docker"
+      ).then((choice) => {
+        if (choice === "Install Docker") {
+          vscode.env.openExternal(vscode.Uri.parse('https://docs.docker.com/get-docker/'));
+        }
+      });
+      return;
+    }
+    
+    vscode.window.showInformationMessage(
+      `🐳 Docker detected (MegaLinter ${status.megalinterVersion || 'latest'}). Ready to run MegaLinter!`,
+      "Run Now",
+      "View Docs"
+    ).then((choice) => {
+      if (choice === "Run Now") {
+        vscode.window.showInformationMessage(
+          "🚀 To run MegaLinter, use: `docker run --rm -v ${PWD}:/tmp/lint oxsecurity/megalinter:latest`",
+          "Copy Command"
+        ).then((copyChoice) => {
+          if (copyChoice === "Copy Command") {
+            vscode.env.clipboard.writeText("docker run --rm -v ${PWD}:/tmp/lint oxsecurity/megalinter:latest");
+            vscode.window.showInformationMessage("Command copied to clipboard!");
+          }
+        });
+      } else if (choice === "View Docs") {
+        vscode.env.openExternal(vscode.Uri.parse('https://megalinter.io/latest/'));
+      }
+    });
+    
+  } catch (error) {
+    vscode.window.showErrorMessage(`Error testing MegaLinter setup: ${error}`);
+  }
+}
+
 async function showStandardsInfo(org: string): Promise<void> {
   const infoMessage = `🏢 ${org} Organization Standards:
 
-✅ **Trunk Configuration**: Unified linting with ESLint, Prettier, security scans
-✅ **ESLint Setup**: TypeScript-strict linting with import/security rules  
+✅ **MegaLinter Configuration**: Advanced linting with 400+ linters for comprehensive code quality
+✅ **ESLint Setup**: TypeScript-strict linting with import/security rules
 ✅ **VSCode Extensions**: Recommended extensions for consistent dev experience
 ✅ **Git Hooks**: Pre-commit validation to catch issues early
 ✅ **CI/CD Pipeline**: Automated quality checks on every push/PR
-✅ **Security Scanning**: Dependabot + vulnerability scanning
+✅ **Security Scanning**: Multi-layered security with Dependabot + vulnerability scanning
 
 These standards ensure:
-• Consistent code quality across all repositories
-• Early detection of security vulnerabilities  
-• Reduced onboarding time for new developers
-• Automated compliance with org policies
+• Comprehensive code quality across 40+ programming languages
+• Advanced security vulnerability detection with 400+ linters
+• Consistent development experience across all team members
+• Automated compliance with organization policies
+• Performance optimization and intelligent caching
 
-Would you like to set up these standards now?`;
+MegaLinter Benefits:
+🔍 **Deep Analysis**: 400+ linters vs traditional 9-10 linters
+🚀 **Performance**: Intelligent parallelization and caching
+🔒 **Security**: Advanced security scanning and secrets detection
+📊 **Reporting**: Rich HTML reports and multiple output formats
+
+Would you like to set up these enhanced standards now?`;
 
   const choice = await vscode.window.showInformationMessage(
     infoMessage,
     "Setup Now",
+    "Learn More",
     "Maybe Later"
   );
 
@@ -383,5 +522,7 @@ Would you like to set up these standards now?`;
       const missing = getMissingStandards(standards);
       await setupAllStandards(workspaceFolder.uri.fsPath, missing);
     }
+  } else if (choice === "Learn More") {
+    vscode.env.openExternal(vscode.Uri.parse('https://megalinter.io/latest/'));
   }
 }
