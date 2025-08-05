@@ -274,7 +274,7 @@ jobs:
           retention-days: 30
 
       - name: Upload SARIF Results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         if: always() && hashFiles('megalinter-reports/megalinter.sarif') != ''
         with:
           sarif_file: ${{ env.REPORT_OUTPUT_FOLDER }}/megalinter.sarif
