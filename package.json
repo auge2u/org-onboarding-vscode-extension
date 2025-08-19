@@ -133,7 +133,7 @@
     "chart.js": "^4.4.1"
   },
   "devDependencies": {
-    "@types/vscode": "^1.80.0",
+    "@types/vscode": "^1.103.0",
     "@types/node": "^24.2.0",
     "@types/js-yaml": "^4.0.5",
     "typescript": "^5.5.4",
